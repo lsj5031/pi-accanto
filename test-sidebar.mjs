@@ -1,0 +1,189 @@
+import { chromium } from 'playwright';
+import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { tmpdir, homedir } from 'node:os';
+import { resolve } from 'node:path';
+import { execFileSync } from 'node:child_process';
+import { createServer } from 'node:http';
+import assert from 'node:assert/strict';
+
+const artifacts = resolve('../.amp/in/artifacts/pi-browser-prototype');
+await mkdir(artifacts, { recursive: true });
+const profile = await mkdtemp(`${tmpdir()}/pi-sidebar-`);
+const server = createServer((req, res) => {
+  res.setHeader('Content-Type', 'text/html; charset=utf-8');
+  res.end('<!doctype html><title>Pi Tab verification</title><style>body{font:18px system-ui;max-width:650px;margin:50px auto;color:#223}textarea{width:95%;height:120px;font:18px system-ui;padding:15px}</style><h1>Local invoice draft</h1><p>Invoice NZ-427 has 3 items at $27.50 each and delivery of $8.25.</p><label for="draft">Message to customer</label><textarea id="draft">Hi Alex, your order is ready.</textarea><input type="password" id="password" value="never-read"><script>window.submissions=0;document.addEventListener("submit",()=>window.submissions++);</script>');
+});
+await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+const native = (action, ...args) => execFileSync('powershell.exe', ['-NoProfile', '-File', resolve('native-ui.ps1'), '-Action', action, ...args], { encoding: 'utf8', windowsHide: true });
+let browser;
+let remote;
+try {
+  browser = await chromium.launchPersistentContext(profile, {
+    executablePath: resolve('../.amp/in/chrome-testing/chrome/win64-156.0.8078.74/chrome-win64/chrome.exe'),
+    headless: false,
+    args: [`--disable-extensions-except=${resolve('dist')}`, `--load-extension=${resolve('dist')}`, '--force-renderer-accessibility', '--force-device-scale-factor=1', '--remote-debugging-port=0'],
+    viewport: null,
+  });
+  const fixture = await browser.newPage();
+  await fixture.goto(`http://127.0.0.1:${server.address().port}`);
+  await fixture.bringToFront();
+  await fixture.locator('#draft').focus();
+  try {
+    native('workflow');
+  } catch (error) {
+    native('screenshot', '-Path', resolve(artifacts, 'native-failure.png'));
+    console.log(native('list'));
+    throw error;
+  }
+  const worker = browser.serviceWorkers()[0] ?? await browser.waitForEvent('serviceworker');
+  const [attachedTab] = await worker.evaluate(() => chrome.tabs.query({ active: true, currentWindow: true }));
+  assert.match(attachedTab.url, /^http:\/\/127\.0\.0\.1:/, 'Toolbar action must grant activeTab access');
+  native('screenshot', '-Path', resolve(artifacts, 'native-open.png'));
+  const port = (await readFile(resolve(profile, 'DevToolsActivePort'), 'utf8')).split('\n')[0];
+  remote = await chromium.connectOverCDP(`http://127.0.0.1:${port}`);
+  console.log('Connected browser:', remote.version());
+  const panel = remote.contexts().flatMap((context) => context.pages()).find((page) => page.url().endsWith('/panel.html'));
+  assert.ok(panel, 'Actual side panel must be accessible');
+  const contexts = await worker.evaluate(() => chrome.runtime.getContexts({ contextTypes: ['SIDE_PANEL'] }));
+  assert.equal(contexts.length, 1);
+  await panel.waitForFunction(() => document.getElementById('status')?.textContent.includes('Ready'));
+  await panel.screenshot({ path: resolve(artifacts, 'live-settings.png') });
+  const config = JSON.parse(await readFile(resolve(homedir(), '.pi/agent/models.json'), 'utf8'));
+  const credential = config.providers['local-gguf'].apiKey;
+  assert.equal(typeof credential, 'string');
+  const requests = [];
+  const responses = [];
+  panel.on('request', (request) => {
+    if (request.url().endsWith('/chat/completions')) {
+      const body = request.postDataJSON();
+      requests.push({ model: body.model, roles: body.messages.map((message) => message.role), tools: body.tools?.map((tool) => tool.function.name), passwordLeaked: JSON.stringify(body).includes('never-read') });
+    }
+  });
+  panel.on('response', (response) => {
+    if (response.url().endsWith('/chat/completions')) {
+      responses.push({ status: response.status(), contentType: response.headers()['content-type'] });
+    }
+  });
+  await panel.locator('#api-key').fill(credential);
+  await Promise.all([panel.waitForEvent('load'), panel.locator('#connect').evaluate((button) => button.click())]);
+  await panel.waitForFunction(() => document.getElementById('status')?.textContent.includes('Ready'));
+  await panel.waitForFunction(() => document.getElementById('send')?.disabled === false);
+  assert.match(await panel.locator('#connection-status').textContent(), /Credential available/);
+  await fixture.bringToFront();
+  await panel.screenshot({ path: resolve(artifacts, 'live-ready.png') });
+  await panel.locator('#prompt').fill('Read the invoice in this tab. Calculate the total including delivery. Answer with the invoice number and total.');
+  await panel.locator('#send').evaluate((button) => button.click());
+  await panel.waitForFunction(() => !document.getElementById('send')?.disabled, null, { timeout: 150000 });
+  const report = {
+    chrome: remote.version(), context: contexts[0].contextType, activeTabGranted: true,
+    liveStatus: await panel.locator('#status').innerText(),
+    liveTranscript: await panel.locator('#transcript').innerText(), requests, responses,
+  };
+  const answer = await panel.locator('article.assistant').last().innerText();
+  report.liveReadPassed = /90\.75/.test(answer) && /NZ-427/i.test(answer) && /Tool: inspect_tab/.test(report.liveTranscript) && requests.length >= 2;
+  console.log('Live result:', report.liveStatus, report.liveTranscript);
+  await panel.screenshot({ path: resolve(artifacts, report.liveReadPassed ? 'live-read.png' : 'live-blocked.png') });
+  native('prepare');
+  native('screenshot', '-Path', resolve(artifacts, 'chrome-sidebar-live.png'));
+  if (report.liveReadPassed) {
+    report.liveCases = [{ invoice: 'NZ-427', total: '90.75', answer }];
+    async function send(prompt) {
+      const start = Date.now();
+      await panel.locator('#prompt').fill(prompt);
+      await panel.locator('#send').evaluate((button) => button.click());
+      await panel.waitForFunction(() => !document.getElementById('send')?.disabled, null, { timeout: 150000 });
+      assert.match(await panel.locator('#status').innerText(), /Reply complete/);
+      return { answer: await panel.locator('article.assistant').last().innerText(), elapsedMs: Date.now() - start };
+    }
+    for (const item of [
+      { invoice: 'NZ-428', text: 'Invoice NZ-428 has 5 items at $12.40 each and delivery of $3.35.', total: '65.35' },
+      { invoice: 'NZ-429', text: 'Invoice NZ-429 has 2 items at $19.95 each and delivery of $7.10.', total: '47.00' },
+    ]) {
+      await fixture.locator('p').evaluate((paragraph, text) => { paragraph.textContent = text; }, item.text);
+      const before = requests.length;
+      const result = await send('Read the invoice again: its values have changed. Calculate the total including delivery with two decimal places and give the current invoice number.');
+      assert.ok(result.answer.includes(item.total), result.answer);
+      assert.ok(result.answer.includes(item.invoice), result.answer);
+      assert.ok(requests.length - before >= 2, 'Fresh page inspection must reach the model');
+      report.liveCases.push({ ...item, ...result });
+    }
+    report.liveEdits = [];
+    for (const text of [
+      'Hi Alex, your invoice total is $47.00 including delivery.',
+      'Hi Morgan — please review invoice NZ-429. Thank you!',
+      'Draft only: payment is pending; do not send this message.',
+    ]) {
+      await fixture.locator('#draft').focus();
+      const result = await send(`Replace the focused message field with exactly this text: ${text}`);
+      assert.equal(await fixture.locator('#draft').inputValue(), text);
+      assert.equal(await fixture.evaluate(() => window.submissions), 0);
+      report.liveEdits.push({ text, ...result });
+      if (report.liveEdits.length === 1) {
+        native('prepare');
+        native('screenshot', '-Path', resolve(artifacts, 'chrome-sidebar-live-edit.png'));
+      }
+    }
+    await fixture.locator('#password').focus();
+    const rejected = await send('Replace the focused password field with test-replacement.');
+    assert.equal(await fixture.locator('#password').inputValue(), 'never-read');
+    assert.match(rejected.answer, /cannot|can't|unable|password|sensitive|excluded/i);
+    report.livePasswordExclusion = rejected;
+    assert.ok(requests.every((request) => !request.passwordLeaked));
+    const pending = panel.waitForRequest((request) => request.url().endsWith('/chat/completions'));
+    await panel.locator('#prompt').fill('Do not use tools. Write a very long, detailed 10000-word essay about the history of typography.');
+    await panel.locator('#send').evaluate((button) => button.click());
+    await pending;
+    await panel.locator('#stop').evaluate((button) => button.click());
+    await panel.waitForFunction(() => !document.getElementById('send')?.disabled, null, { timeout: 15000 });
+    report.cancelStatus = await panel.locator('#status').innerText();
+    assert.match(report.cancelStatus, /aborted|cancel/i);
+    report.recovery = await send('Reply with exactly: Ready for the next task. Do not use tools.');
+    assert.match(report.recovery.answer, /Ready for the next task/);
+    await panel.reload();
+    await panel.waitForFunction(() => document.getElementById('status')?.textContent.includes('Ready'));
+    assert.match(await panel.locator('#transcript').innerText(), /Ready for the next task/);
+    assert.equal(await panel.locator('#send').isEnabled(), true);
+    assert.equal(await panel.locator('#api-key').inputValue(), '');
+    report.liveReloadPassed = true;
+    assert.ok(responses.some((response) => response.status === 200 && response.contentType.includes('text/event-stream')));
+    await writeFile(resolve(artifacts, 'sidebar-report.json'), JSON.stringify(report, null, 2));
+    console.log('PASS: live reads 3/3, edits 3/3, password exclusion, streaming responses, cancellation, recovery, and reload.');
+  }
+  assert.ok(requests.every((request) => request.model === 'main' && !request.roles.includes('developer')));
+  // Check the actual sidebar's browser tools independently if inference is blocked.
+  await fixture.locator('p').evaluate((paragraph) => { paragraph.textContent = 'Invoice NZ-427 has 3 items at $27.50 each and delivery of $8.25.'; });
+  await panel.locator('#connection').evaluate((details) => { details.open = true; });
+  await panel.locator('#mode').selectOption('scripted');
+  await Promise.all([panel.waitForEvent('load'), panel.locator('#connect').evaluate((button) => button.click())]);
+  await panel.waitForFunction(() => document.getElementById('status')?.textContent.includes('Ready'));
+  await panel.locator('#send').evaluate((button) => button.click());
+  await panel.waitForFunction(() => !document.getElementById('send')?.disabled);
+  assert.match(await panel.locator('#transcript').innerText(), /Invoice NZ-427 has 3 items/);
+  assert.doesNotMatch(await panel.locator('#transcript').innerText(), /never-read/);
+  await fixture.locator('#draft').focus();
+  await panel.locator('#prompt').fill('Type: Hi Alex, your invoice total is $90.75 including delivery.');
+  await panel.locator('#send').evaluate((button) => button.click());
+  await panel.waitForFunction(() => !document.getElementById('send')?.disabled);
+  assert.equal(await fixture.locator('#draft').inputValue(), 'Hi Alex, your invoice total is $90.75 including delivery.');
+  assert.equal(await fixture.evaluate(() => window.submissions), 0);
+  native('prepare');
+  native('screenshot', '-Path', resolve(artifacts, 'chrome-sidebar-edit.png'));
+  await fixture.locator('#password').focus();
+  await panel.locator('#prompt').fill('Type: must not change password');
+  await panel.locator('#send').evaluate((button) => button.click());
+  await panel.waitForFunction(() => !document.getElementById('send')?.disabled);
+  assert.equal(await fixture.locator('#password').inputValue(), 'never-read');
+  assert.match(await panel.locator('#transcript').innerText(), /Password and other sensitive field types are excluded/);
+  await panel.reload();
+  await panel.waitForFunction(() => document.getElementById('status')?.textContent.includes('Ready'));
+  assert.match(await panel.locator('#transcript').innerText(), /Hi Alex, your invoice total is/);
+  report.scriptedSidebarControlsPassed = true;
+  await writeFile(resolve(artifacts, 'sidebar-report.json'), JSON.stringify(report, null, 2));
+  console.log('PASS: real toolbar activeTab grant, SIDE_PANEL, scripted inspection/edit/password exclusion/reload.');
+  assert.ok(report.liveReadPassed, 'Live inference failed; inspect sidebar-report.json for the actual endpoint response');
+} finally {
+  await remote?.close();
+  await browser?.close();
+  await new Promise((resolve) => server.close(resolve));
+  await rm(profile, { recursive: true, force: true });
+}

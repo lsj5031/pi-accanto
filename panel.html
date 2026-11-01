@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Pi Accanto</title>
+  <link rel="stylesheet" href="panel.css">
+</head>
+<body>
+  <header><span class="brand">π</span><div><h1>Pi Accanto</h1><p>A little help, right beside your tab</p></div></header>
+  <div class="notice" id="provider-notice">LOCAL-GGUF · MAIN</div>
+  <details id="connection"><summary>Model connection</summary>
+    <form id="settings">
+      <p>http://192.168.1.111:11236/v1 · main</p>
+      <label for="mode">Provider</label>
+      <select id="mode"><option value="live">Local model · main</option><option value="scripted">Offline scripted check</option></select>
+      <label for="api-key">API key (kept for this browser session)</label>
+      <input id="api-key" type="password" autocomplete="off" spellcheck="false">
+      <button id="connect">Connect</button>
+      <p id="connection-status" role="status">Enter the endpoint’s key to connect.</p>
+    </form>
+  </details>
+  <section class="runtime"><span id="status" role="status">Opening Pi Durable…</span><p id="target">No tab selected</p></section>
+  <main id="transcript" aria-label="Conversation" aria-live="polite"></main>
+  <footer>
+    <p id="help">Ask about this tab or edit its focused text field. Page content needed for your task goes to the selected model.</p>
+    <form id="composer">
+      <label for="prompt">Instruction</label>
+      <textarea id="prompt" rows="2" placeholder="What would you like to do in this tab?" required></textarea>
+      <div class="buttons"><button id="send" disabled>Send</button><button type="button" id="stop" disabled>Stop</button></div>
+    </form>
+    <p class="hint">Works on the tab selected when you send.<br>History stays in this extension’s IndexedDB.</p>
+  </footer>
+  <script type="module" src="panel.js"></script>
+</body>
+</html>

@@ -1,0 +1,28 @@
+:root { font: 14px/1.5 system-ui, sans-serif; color: #e5eaf3; background: #111723; color-scheme: dark; }
+* { box-sizing: border-box; }
+body { margin: 0; height: 100vh; display: flex; flex-direction: column; }
+header { display: flex; gap: 12px; align-items: center; padding: 22px 20px 18px; }
+.brand { color: #91e0c4; font-size: 36px; }
+h1 { margin: 0; font-size: 22px; letter-spacing: -.5px; }
+p { margin: 4px 0; color: #a5b1c5; font-size: 12px; }
+.notice { padding: 8px 20px; background: #293027; color: #d9d7a6; font-size: 10px; letter-spacing: 1px; }
+details { flex-shrink: 0; padding: 10px 20px; border-bottom: 1px solid #2c3546; }
+summary { cursor: pointer; color: #a5b1c5; font-size: 12px; }
+#settings { max-height: 270px; overflow-y: auto; }
+input, select { width: 100%; padding: 8px; margin-bottom: 8px; background: #192131; border: 1px solid #45536b; border-radius: 6px; color: inherit; }
+.runtime { padding: 16px 20px; border-bottom: 1px solid #2c3546; }
+#status { color: #91e0c4; font-weight: 600; }
+#target { overflow-wrap: anywhere; }
+main { flex: 1; padding: 16px 20px; min-height: 0; overflow-y: auto; }
+article { margin-bottom: 16px; padding: 12px; background: #1b2433; border-radius: 8px; }
+article.user { background: #20382f; }
+article strong { font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color: #aab7cb; }
+article pre { white-space: pre-wrap; overflow-wrap: anywhere; margin: 6px 0 0; font: 13px/1.5 system-ui, sans-serif; }
+footer { flex-shrink: 0; padding: 16px 20px; border-top: 1px solid #2c3546; }
+label { display: block; margin: 12px 0 6px; font-size: 12px; }
+textarea { width: 100%; padding: 10px; background: #192131; border: 1px solid #45536b; border-radius: 6px; font: inherit; resize: vertical; }
+.buttons { display: flex; gap: 8px; margin-top: 10px; }
+button { padding: 9px 16px; border: 0; border-radius: 6px; background: #91e0c4; color: #10221a; font-weight: 650; cursor: pointer; }
+#stop { background: #2c3546; color: #e5eaf3; }
+button:disabled { opacity: .45; cursor: default; }
+.hint { margin-top: 12px; }
