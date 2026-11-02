@@ -80,10 +80,44 @@ This narrow-layout capture uses the offline scripted provider.
 
 Run `npm ci` and `npm run build` to create the extension bundle.
 
+### Model setup
+
+Open **Model connection** from the header. Choose **OpenAI-compatible model**,
+enter the server's **API base URL** (including `/v1` if required), its **Model ID**
+and **API key**, then click **Connect**. Accept Chrome's host permission prompt
+for the server. The connection check requires `/models` to list the exact model
+ID; replies use streaming chat completions with tool calls. Base URLs must be
+HTTP(S), without embedded credentials, query parameters or fragments.
+
+The endpoint and model ID are saved on this device and shared across
+conversations. Existing agents keep their current connection until reloaded;
+stop a reply before changing its model. Keys stay in `chrome.storage.session`,
+are not bundled or written to conversation history, and must be entered again
+after a browser restart. Changing the endpoint requires entering its key;
+Pi does not reuse the previous endpoint's session key. Failed connection checks
+leave the saved settings intact. Existing installations retain their original
+local endpoint/model defaults until changed.
+
+Your server must accept requests from the unpacked extension's
+`chrome-extension://<extension-id>` origin. Find its ID at `chrome://extensions`;
+moving the checkout may change it. HTTP 403 can indicate a server origin/host
+policy rejection. Keep authentication and origin restrictions enabled; Pi does
+not bypass them. The API key field does not enable authentication on the server.
+The adapter currently uses the existing reasoning-enabled model profile with
+262,144 context and 65,536 output token limits; arbitrary OpenAI-compatible
+servers and models have not all been tested. Profile capabilities and token
+limits are not yet editable in settings.
+
+To explore the UI and browser tools without a model, select **Offline scripted
+check** and **Connect**. This mode performs no AI inference; see the scripted
+commands below. Search/source commands can still make network requests.
+
+### Install and attach a page
+
 The built extension is in `dist/`. In Chrome's `chrome://extensions` (or Edge's
 `edge://extensions`), enable Developer mode, choose **Load unpacked**, and select
-this checkout's `dist` directory. The existing verified checkout is at
-`T:\playground\pi-browser-prototype`; keep that path to preserve its extension ID.
+this checkout's `dist` directory. Keep its location stable if your model server
+allows a specific extension ID.
 
 Open a disposable website and open Pi Accanto from Chrome's side panel or its
 toolbar action (Alt+Shift+P if available). If **Allow this site** appears, choose
@@ -114,6 +148,43 @@ with tools. PDF chats include document identity and use `inspect_tab` for PDF
 text. **Web research** includes no attached-page excerpt. Only your question is
 shown as your chat bubble; the excerpt stays in the model's context and local
 conversation history.
+
+### Page permissions: what Chrome remembers
+
+You do **not** need to click the toolbar icon before every page read. Choose
+**Allow this site** in the sidebar and accept Chrome's prompt once for each
+site you want to use. That host permission persists across conversations,
+tabs and browser restarts until revoked in Chrome's extension site-access
+settings. A different host, such as a subdomain, may need its own grant.
+Restoring a page attachment after browser restart is a separate step; it does
+not mean the site permission was forgotten.
+
+| Access | How it is granted | Lifetime and scope |
+| --- | --- | --- |
+| Attached website content | **Allow this site** and Chrome's prompt | Remembered site grant, shared across conversations. Only the explicitly attached tab supplies page context. |
+| All ordinary websites (optional) | **Model connection → Website access → Allow all websites** and Chrome's prompt | Remembered HTTP(S) grant across conversations and browser restarts. No automatic reading or attachment of other tabs. |
+| Temporary website content | Toolbar icon or its keyboard shortcut (`activeTab`) | Temporary access to that tab; may be lost when the tab closes or navigates to another origin. |
+| Search-result source | **Allow source** for an exact result URL | Task-specific approval plus a Chrome host grant. The host grant persists; the exact-source approval resets on task change or panel restart. |
+| Local PDFs | **Allow access to file URLs** in extension details | Separate Chrome setting; only PDF files are supported. |
+| Tab titles and URLs | Required `tabs` permission at installation | Metadata access, not permission to read website content. |
+
+Site-by-site access remains the default. For fewer prompts, choose **Allow all
+websites** in settings and approve Chrome's request once. **Remove all-site
+access** returns to site-by-site access; you may need to allow individual sites
+again. Chrome may restore previously approved access without showing a second
+native prompt. All-site access does not bypass exact-source approvals, attach
+unrelated tabs, or enable local files or browser-internal pages such as
+`chrome://`. The legacy model server, Exa MCP origin and file URL pattern remain
+declared as required host permissions; custom model origins are requested when
+connecting. Chrome can clear covered model/search host grants when broad access
+is removed, including hosts declared in the manifest. Pi then asks you to confirm
+access to its model and search services in Chrome, without restoring arbitrary
+websites. If you decline, reconnect the model and save the search provider when
+you want those services again.
+
+If **Allow this site** keeps appearing on the same host after you accepted it,
+check that Chrome still grants the extension access to that site. Reopening a
+sidebar after using only the toolbar's temporary grant can require access again.
 
 ### Independent conversations and concurrent agents
 
@@ -147,11 +218,8 @@ the same action. One panel writes each conversation at a time; different
 conversations can run concurrently. If its owning sidebar is hidden, return to
 that website and use **Open in tab** there before moving the conversation.
 
-In **Model connection**, select **Local model · main**, enter the endpoint's
-API key, and click **Connect**. The extension checks that `/models` lists `main`.
-The key stays in `chrome.storage.session`; it is not bundled, written to
-IndexedDB, or restored after a browser restart. Then ask a page question, or
-focus a normal text input/textarea and ask the assistant to replace its text.
+Ask a page question, or focus a normal text input/textarea and ask the assistant
+to replace its text.
 Editing emits input/change events but never clicks Submit. Websites can react
 to those events, so use a disposable page.
 
@@ -319,20 +387,9 @@ open the final original PDF URL directly. Embedded, browser-internal, extension,
 `blob:` and `data:` viewers require opening the original PDF in its own ordinary
 HTTP(S) or file tab. HTML inspection and focused-field editing still work normally.
 
-The provider is `local-gguf`, at `http://192.168.1.111:11236/v1`, with model
-`main`, OpenAI chat completions, reasoning enabled, and developer-role support
-disabled. The supplied context/output limits and text/image model capabilities
-are configured. Browser tools supply text only. CSP permits HTTP(S), local files
-and bundled reader assets so PDFs can be fetched, while scripts/workers remain
-restricted to the extension bundle, with `wasm-unsafe-eval` for locally bundled
-QuickJS. The `tabs` permission supplies titles and URLs for the sidebar's current
-site prompt; it does not grant page-content access. Attached-tab content requires
-an explicit **Allow this site** host grant or temporary toolbar `activeTab`
-access. The Exa MCP host is granted at installation for keyless
-search. Optional HTTP(S) origins are declared for page access, TinyFish, Brave and user-approved source
-reads; they are requested individually, with no automatic all-sites grant.
-PDF fetches use only the validated attached document
-URL and results are discarded if the tab changes while reading.
+PDF fetches use only the validated attached document URL and results are
+discarded if the tab changes while reading. Scripts and workers stay restricted
+to the extension bundle; `wasm-unsafe-eval` permits the bundled QuickJS runtime.
 
 **Live workflow verified:** the actual Chrome for Testing 156.0.8078.74 sidebar
 completed three invoice-reading cases ($90.75, $65.35, $47.00), three exact-text
@@ -341,24 +398,6 @@ recovery after Stop, and history/session-credential restoration after reload.
 The offline regression suite also passes, including browser-restart history
 persistence. These are checks on a disposable fixture, not a claim of
 compatibility with every website.
-
-The initial live request failed with HTTP 403 because Splash rejected the
-extension's Origin. With the user's approval, the Mitori runner's installed
-`/Users/leo/Code/splash-runtime/current/server/http_security.py` now allows exactly
-`chrome-extension://cpagjnnhdjoiccpfdnioojedbmeajjgp` through its same-origin
-comparison, after Host and duplicate-header checks. Service `ai.mitori.splash`
-was restarted. Other tested extension/web origins and untrusted Hosts remain
-rejected. The extension does not strip Origin headers or disable browser
-security. Loading the unpacked extension from a different path may change its
-ID and require updating this allowance.
-
-This is an installed-runtime patch; a Splash upgrade can overwrite it. To roll
-it back, restore `if origins:` in that file, remove its two exception comments,
-and restart the service. No launcher or launchd configuration was changed.
-The server inspection also found that API-key authentication was already
-unconfigured: inference without a key succeeds before and after the patch.
-The origin exception preserves that existing setting; the extension's key
-field does not mean the current server enforces authentication.
 
 For a credential-free browser-tool check, choose **Offline scripted check**
 and click **Connect**. `Type: replacement text` replaces the focused field,
@@ -414,6 +453,10 @@ reload state, exact Markdown copying, unavailable targets, reload, and
 browser-restart persistence/invalidation. It also checks the actual 16px composer
 and response sizes. It renders an
 extension tab at sidebar width and grants the test copy loopback access.
+It also checks custom endpoint/model configuration against a local HTTP/SSE
+fixture, unknown-model rejection, prevention of session-key reuse at a different
+endpoint, actual chat request routing, settings persistence and session-key
+expiry after browser restart. Fixture credentials and replies are synthetic.
 
 `npm run test:pdf` uses isolated headless Chrome for Testing 156 profiles and
 a loopback permission in the test copy. It checks asymmetric multipage text,
@@ -441,7 +484,8 @@ uses **Open in tab** to transfer the conversation and records that transition
 separately: hidden tab-specific sidebars can pause. Multi-tab cases then run in
 that ordinary agent tab and check follow-up recall and fresh excerpts from the
 original tab, a site-access request
-and real Chrome confirmation for a new tab, exclusion of prior tasks from actual model requests, fresh context
+and real Chrome confirmation for optional all-site access, persistence on reload,
+revocation and restoration of site-by-site access, exclusion of prior tasks from actual model requests, fresh context
 after **New chat**, and rejection of closed targets before model invocation.
 The native sidebar also checks copying a real-model answer to the system clipboard.
 PDF cases use the real built-in viewer and the remembered site grant, ask the live model
@@ -505,3 +549,24 @@ icon assets into `dist/assets`.
 Unattended execution while the panel is closed and recovery of an action
 interrupted by closing the browser are not promised. Edge has not been tested.
 Code Mode / QuickJS WASM is bundled locally; no remote sandbox is used.
+
+## Public release preparation
+
+The extension works locally, but the repository still needs these steps before
+a public open-source release:
+
+- Choose and add a project license. No project license is currently included;
+  dependency licenses do not license this repository's original code or artwork.
+- Broaden model compatibility checks and make profile capabilities/token limits
+  configurable for servers that differ from the current adapter profile.
+- Make the full test setup portable. The native sidebar suite currently needs
+  an interactive Windows desktop, a specific Chrome build and a configured local
+  model credential; it is not a general CI setup.
+- Review tracked assets and Git history before changing repository visibility.
+  Removing machine-specific setup notes from this README does not remove them
+  from earlier commits. Review third-party license/notice requirements for
+  bundled dependencies as part of distribution.
+
+Contributions should describe the user-visible behavior and validation. Use
+disposable pages/profiles for browser tests, keep credentials out of issues and
+commits, and distinguish real provider/model checks from fixture-based checks.

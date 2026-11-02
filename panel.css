@@ -26,13 +26,13 @@ summary { cursor: pointer; }
 #provider-notice { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .connection-chevron { width: 7px; height: 7px; flex-shrink: 0; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; transform: translateY(-2px) rotate(45deg); }
 #connection[open] .connection-chevron { transform: translateY(2px) rotate(225deg); }
-#settings { position: absolute; z-index: 2; right: 0; top: calc(100% + 8px); width: min(320px, calc(100vw - 40px)); max-height: calc(100dvh - 90px); overflow-y: auto; overscroll-behavior: contain; padding: 20px; background: #fff; border: 1px solid #dce3d9; border-radius: 12px; box-shadow: 0 8px 28px #27372b18; transform-origin: top right; }
+#settings { position: absolute; z-index: 2; right: 0; top: calc(100% + 8px); width: min(320px, calc(100vw - 40px)); max-height: calc(100dvh - 90px); overflow-y: auto; overscroll-behavior: contain; padding: 16px; background: #fff; border: 1px solid #dce3d9; border-radius: 12px; box-shadow: 0 8px 28px #27372b18; transform-origin: top right; }
 #settings h2 { font-size: 16px; font-weight: 600; }
-#settings p { font-size: 14px; color: var(--muted); overflow-wrap: anywhere; }
-#settings .endpoint { margin-top: 4px; }
-#settings label { margin-top: 16px; }
+#settings p { font-size: 13px; color: var(--muted); overflow-wrap: anywhere; }
+#settings .access-heading { margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--line); }
+#settings label { margin-top: 12px; }
 #settings button { margin-top: 16px; }
-#connection-status { margin-top: 12px; }
+#connection-status, #access-status { margin-top: 12px; }
 input, select { width: 100%; padding: 9px 10px; border: 1px solid #c9d3c7; border-radius: 6px; background: #fff; }
 #key-help { margin-top: 6px; }
 #conversation-bar { display: flex; align-items: center; gap: 8px; margin: 4px 20px; flex-shrink: 0; }

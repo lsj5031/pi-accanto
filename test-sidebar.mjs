@@ -62,7 +62,6 @@ try {
     if (!contexts.length) await new Promise(resolve => setTimeout(resolve, 100));
   }
   assert.equal(contexts.length, 1, 'Toolbar action must open an actual side panel');
-  native('screenshot', '-Path', resolve(artifacts, 'native-open.png'));
   const port = (await readFile(resolve(profile, 'DevToolsActivePort'), 'utf8')).split('\n')[0];
   remote = await chromium.connectOverCDP(`http://127.0.0.1:${port}`);
   console.log('Connected browser:', remote.version());
@@ -84,9 +83,14 @@ try {
         requests.push({ model: body.model, roles: body.messages.map((message) => message.role), pageInput: body.messages.findLast((message) => message.role === 'user')?.content, tools: body.tools?.map((tool) => tool.function.name), passwordLeaked: contents.includes('never-read'), oldTaskPresent: contents.includes('NZ-429'), otherTaskPresent: contents.includes('YY-880') });
       }
     });
-    page.on('response', (response) => {
+    page.on('requestfailed', request => {
+      if (request.url().endsWith('/chat/completions')) responses.push({ failure: request.failure()?.errorText });
+    });
+    page.on('response', async (response) => {
       if (response.url().endsWith('/chat/completions')) {
-        responses.push({ status: response.status(), contentType: response.headers()['content-type'] });
+        const entry = { status: response.status(), contentType: response.headers()['content-type'] };
+        responses.push(entry);
+        if (!response.ok()) entry.body = (await response.text().catch(() => 'Response body unavailable')).replaceAll(credential, '[REDACTED]');
       }
     });
   }
@@ -137,7 +141,12 @@ try {
       await panel.locator('#prompt').fill(prompt);
       await panel.locator('#send').evaluate((button) => button.click());
       await panel.waitForFunction(() => !document.getElementById('send')?.disabled, null, { timeout: 150000 });
-      assert.match(await panel.locator('#status').innerText(), /Reply complete/);
+      const status = await panel.locator('#status').innerText();
+      if (!status.includes('Reply complete')) {
+        await writeFile(resolve(artifacts, 'sidebar-failure.json'), JSON.stringify({ prompt, status, requests, responses, transcript: await panel.locator('#transcript').textContent() }, null, 2));
+        await panel.screenshot({ path: resolve(artifacts, 'sidebar-failure.png') });
+      }
+      assert.match(status, /Reply complete/);
       return { answer: await panel.locator('article.assistant').last().innerText(), elapsedMs: Date.now() - start };
     }
     for (const item of [
@@ -224,8 +233,39 @@ try {
     await panel.waitForFunction(() => !document.getElementById('use-current-tab').disabled);
     assert.match(await panel.locator('#status').textContent(), /toolbar action/);
     assert.equal(await panel.locator('#target').textContent(), 'Pi Tab verification');
-    await panel.locator('#allow-site').click();
+    // Approve the real broad host prompt, verify another tab can be read, then
+    // revoke it and prove site-by-site approval is required again.
+    await panel.locator('#connection').evaluate(element => { element.open = true; });
+    await panel.locator('#all-sites').click();
     native('allow-site');
+    await panel.waitForFunction(() => document.getElementById('all-sites').textContent === 'Remove all-site access');
+    await panel.locator('#all-sites').scrollIntoViewIfNeeded();
+    await panel.locator('#settings').screenshot({ path: resolve(artifacts, 'settings-all-sites-enabled.png') });
+    assert.match(await panel.evaluate(async (url) => {
+      const tab = (await chrome.tabs.query({})).find(tab => tab.url === url);
+      const [result] = await chrome.scripting.executeScript({ target: { tabId: tab.id }, func: () => document.querySelector('p').textContent });
+      return result.result;
+    }, other.url()), /Invoice YY-880/);
+    await panel.reload();
+    await panel.waitForFunction(() => document.getElementById('status').textContent.includes('Ready'));
+    assert.equal(await panel.locator('#all-sites').textContent(), 'Remove all-site access');
+    await panel.locator('#connection').evaluate(element => { element.open = true; });
+    await panel.locator('#all-sites').click();
+    native('allow-site');
+    await panel.waitForFunction(() => document.getElementById('all-sites').textContent === 'Allow all websites' && !document.getElementById('all-sites').disabled);
+    assert.equal(await panel.evaluate(() => chrome.permissions.contains({ origins: ['http://192.168.1.111/*', 'https://mcp.exa.ai/*'] })), true, 'Revoking broad page access must retain model/search service access');
+    await panel.locator('#connection').evaluate(element => { element.open = false; });
+    await panel.waitForFunction(() => !document.getElementById('site-access').hidden);
+    report.allSiteAccess = { realChromeApproval: true, restoredAfterReload: true, revoked: true };
+    await panel.locator('#allow-site').click();
+    // Chrome may remember the earlier broad approval and restore a subset
+    // without showing another native prompt. Still require actual page access.
+    try {
+      await panel.waitForFunction(() => document.getElementById('status').textContent.includes('Site access allowed'), null, { timeout: 1000 });
+    } catch (error) {
+      if (error.name !== 'TimeoutError') throw error;
+      native('allow-site');
+    }
     await panel.waitForFunction(() => document.getElementById('status').textContent.includes('Site access allowed'));
     await panel.locator('#use-current-tab').evaluate((button) => button.click());
     await panel.waitForFunction(() => document.getElementById('target').textContent.includes('Other task'));

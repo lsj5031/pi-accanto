@@ -14,7 +14,24 @@ const manifest = JSON.parse(await readFile(resolve(extension, 'manifest.json'), 
 // Automation cannot invoke activeTab's toolbar gesture. Grant only the disposable fixture origin in this test copy.
 manifest.host_permissions = ['http://127.0.0.1/*'];
 await writeFile(resolve(extension, 'manifest.json'), JSON.stringify(manifest));
+const modelRequests = [];
 const server = createServer((req, res) => {
+  if (req.url === '/custom/v1/models') {
+    modelRequests.push({ path: req.url, authorization: req.headers.authorization });
+    res.setHeader('Content-Type', 'application/json');
+    res.end(JSON.stringify({ data: [{ id: 'fixture-model-719' }] }));
+    return;
+  }
+  if (req.url === '/custom/v1/chat/completions') {
+    let body = '';
+    req.on('data', chunk => { body += chunk; });
+    req.on('end', () => {
+      modelRequests.push({ path: req.url, authorization: req.headers.authorization, body: JSON.parse(body) });
+      res.setHeader('Content-Type', 'text/event-stream');
+      res.end(`data: ${JSON.stringify({ choices: [{ index: 0, delta: { role: 'assistant', content: 'Configured model fixture response 719.' }, finish_reason: null }] })}\n\ndata: ${JSON.stringify({ choices: [{ index: 0, delta: {}, finish_reason: 'stop' }] })}\n\ndata: [DONE]\n\n`);
+    });
+    return;
+  }
   res.setHeader('Content-Type', 'text/html');
   res.end('<!doctype html><title>Disposable draft</title><h1>Compatibility fixture</h1><p>Invoice NZ-427 totals $183.75.</p><textarea id="draft">Original draft</textarea><input id="secret" type="password" value="unchanged"><script>window.submissions=0;document.addEventListener("submit",()=>window.submissions++);</script>');
 });
@@ -190,7 +207,73 @@ try {
   await reopened.locator('#send').click();
   await reopened.waitForFunction(() => !document.getElementById('send').disabled);
   assert.match(await reopened.locator('#status').textContent(), /attached tab is unavailable/);
-  console.log('PASS: browser controls, exact Markdown clipboard copy, contextual tab switching, permission-independent New chat, attachment/context boundaries, PDF-independent reload and browser restart persistence');
+  // Configure a non-default base path/model through the public settings UI.
+  const modelEndpoint = `http://127.0.0.1:${server.address().port}/custom/v1`;
+  await reopened.locator('#connection > summary').click();
+  await reopened.locator('#mode').selectOption('live');
+  await reopened.locator('#model-endpoint').fill(`${modelEndpoint}///`);
+  await reopened.locator('#model-id').fill('missing-model');
+  await reopened.locator('#api-key').fill('fixture-key-719');
+  await reopened.locator('#connect').click();
+  await reopened.waitForFunction(() => document.getElementById('connection-status').textContent.includes('does not list model missing-model'));
+  assert.equal(await reopened.evaluate(async () => (await chrome.storage.local.get('modelConnection')).modelConnection), undefined);
+  await reopened.locator('#model-id').fill('fixture-model-719');
+  await reopened.locator('#connect').click();
+  await reopened.waitForFunction(() => document.getElementById('provider-notice').textContent === 'fixture-model-719');
+  assert.deepEqual(await reopened.evaluate(async () => (await chrome.storage.local.get('modelConnection')).modelConnection), { endpoint: modelEndpoint, modelId: 'fixture-model-719' });
+  assert.doesNotMatch(JSON.stringify(await reopened.evaluate(() => chrome.storage.local.get(null))), /fixture-key-719/);
+  assert.equal(await reopened.locator('#api-key').inputValue(), '');
+  await reopened.reload();
+  await reopened.waitForFunction(() => document.getElementById('status').textContent.includes('Ready'));
+  await reopened.locator('#connection > summary').click();
+  assert.equal(await reopened.locator('#model-endpoint').inputValue(), modelEndpoint);
+  assert.equal(await reopened.locator('#model-id').inputValue(), 'fixture-model-719');
+  const beforeEndpointChange = modelRequests.length;
+  await reopened.locator('#model-endpoint').fill(`${modelEndpoint}/other-server`);
+  await reopened.locator('#connect').click();
+  await reopened.waitForFunction(() => document.getElementById('connection-status').textContent.includes('Saved keys are not reused'));
+  assert.equal(modelRequests.length, beforeEndpointChange, 'Do not send the saved key to another endpoint');
+  await reopened.locator('#model-endpoint').fill(`http://user:password@127.0.0.1:${server.address().port}/v1`);
+  await reopened.locator('#connect').click();
+  await reopened.waitForFunction(() => document.getElementById('connection-status').textContent.includes('without credentials'));
+  assert.equal(modelRequests.length, beforeEndpointChange);
+  await reopened.locator('#model-endpoint').fill(modelEndpoint);
+  await reopened.locator('#connection > summary').click();
+  const fresh = await browser.newPage();
+  await fresh.goto(`http://127.0.0.1:${server.address().port}`);
+  await reopened.locator('#new-conversation').evaluate(button => button.click());
+  await reopened.waitForFunction(() => !document.getElementById('send').disabled);
+  await reopened.locator('#prompt').fill('Reply with the configured model fixture response.');
+  await reopened.locator('#send').evaluate(button => button.click());
+  await reopened.waitForFunction(() => !document.getElementById('send').disabled);
+  assert.match(await reopened.locator('article.assistant').last().textContent(), /Configured model fixture response 719/);
+  assert.equal(modelRequests.at(-1).body.model, 'fixture-model-719');
+  assert.equal(modelRequests.at(-1).authorization, 'Bearer fixture-key-719');
+  await reopened.reload();
+  await reopened.waitForFunction(() => document.getElementById('status').textContent.includes('Ready'));
+  await reopened.setViewportSize({ width: 320, height: 640 });
+  await reopened.locator('#connection').evaluate(element => { element.open = true; });
+  const connectBounds = await reopened.locator('#connect').boundingBox();
+  const settingsBounds = await reopened.locator('#settings').boundingBox();
+  assert.ok(connectBounds.y + connectBounds.height < settingsBounds.y + settingsBounds.height, 'Connect is fully visible without scrolling in the narrow settings view');
+  await reopened.screenshot({ path: resolve(artifacts, 'settings-model-narrow.png') });
+  await reopened.locator('#all-sites').scrollIntoViewIfNeeded();
+  await reopened.screenshot({ path: resolve(artifacts, 'settings-access-narrow.png') });
+  assert.equal(await reopened.evaluate(() => document.documentElement.scrollWidth), 320);
+  assert.equal(await reopened.evaluate(() => document.documentElement.scrollHeight), 640);
+  await browser.close();
+  browser = await chromium.launchPersistentContext(profile, {
+    channel: 'chromium', headless: false,
+    args: [`--disable-extensions-except=${extension}`, `--load-extension=${extension}`],
+    viewport: { width: 420, height: 850 },
+  });
+  const settingsRestored = await browser.newPage();
+  await settingsRestored.goto(conversationUrl);
+  await settingsRestored.waitForFunction(() => document.getElementById('status').textContent.includes('Connect your model'));
+  assert.equal(await settingsRestored.locator('#model-endpoint').inputValue(), modelEndpoint);
+  assert.equal(await settingsRestored.locator('#model-id').inputValue(), 'fixture-model-719');
+  assert.equal(await settingsRestored.locator('#send').isDisabled(), true, 'Endpoint/model persist after restart; the session key does not');
+  console.log('PASS: browser controls, clipboard, tab/context boundaries, history, configurable endpoint/model request routing, credential isolation, settings persistence and session-key expiry');
 } finally {
   await browser?.close();
   await new Promise((done) => server.close(done));
