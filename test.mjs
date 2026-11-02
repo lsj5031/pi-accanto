@@ -38,22 +38,36 @@ try {
   panel.on('pageerror', (error) => console.error('PANEL ERROR', error));
   panel.on('console', (msg) => { if (msg.type() === 'error') console.error('PANEL CONSOLE', msg.text()); });
   await panel.setViewportSize({ width: 420, height: 850 });
+  await panel.emulateMedia({ colorScheme: 'dark', reducedMotion: 'reduce' });
   await panel.waitForFunction(() => document.getElementById('status')?.textContent.includes('Ready'));
+  assert.equal(await panel.locator('html').evaluate((element) => getComputedStyle(element).colorScheme), 'light');
+  await panel.getByRole('button', { name: 'Summarize this page' }).evaluate((button) => button.click());
+  assert.equal(await panel.locator('#prompt').inputValue(), 'Summarize this page in a few sentences.');
   await panel.screenshot({ path: resolve(artifacts, 'ready.png') });
-  await panel.locator('#send').evaluate((button) => button.click());
+  await panel.locator('#prompt').evaluate((input) => input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', ctrlKey: true, bubbles: true, cancelable: true })));
   await panel.waitForFunction(() => document.getElementById('status')?.textContent.includes('Check complete'));
-  assert.match(await panel.locator('#transcript').innerText(), /Invoice NZ-427 totals \$183.75/);
+  assert.equal(await panel.locator('#prompt').inputValue(), '');
+  assert.equal(await panel.locator('article.assistant .message-body strong').last().innerText(), 'Scripted compatibility check finished.');
+  const readResult = panel.locator('article.toolResult details').first();
+  assert.equal(await readResult.evaluate((details) => details.open), false);
+  await readResult.locator('summary').evaluate((summary) => summary.click());
+  assert.match(await readResult.innerText(), /Invoice NZ-427 totals \$183.75/);
   await panel.screenshot({ path: resolve(artifacts, 'inspected.png') });
   await fixture.locator('#draft').focus();
   await panel.locator('#prompt').evaluate((input) => { input.value = 'Type: Revised draft ✓'; });
-  await panel.locator('#send').evaluate((button) => button.click());
+  await panel.locator('#send').evaluate((button) => {
+    button.click();
+    document.getElementById('prompt').value = 'Next question drafted while the reply runs.';
+  });
   await panel.waitForFunction(() => document.getElementById('status')?.textContent.includes('Check complete'));
   assert.equal(await fixture.locator('#draft').inputValue(), 'Revised draft ✓');
+  assert.equal(await panel.locator('#prompt').inputValue(), 'Next question drafted while the reply runs.');
   assert.equal(await fixture.evaluate(() => window.submissions), 0);
+  assert.equal(await readResult.evaluate((details) => details.open), true, 'An expanded result stays open as new messages arrive');
   await panel.screenshot({ path: resolve(artifacts, 'typed.png') });
   await panel.reload();
   await panel.waitForFunction(() => document.getElementById('status')?.textContent.includes('Ready'));
-  assert.match(await panel.locator('#transcript').innerText(), /Revised draft ✓/);
+  assert.match(await panel.locator('#transcript').textContent(), /Revised draft ✓/);
   await panel.screenshot({ path: resolve(artifacts, 'restored.png') });
   const duplicate = await browser.newPage();
   await duplicate.goto(`chrome-extension://${id}/panel.html`);
@@ -66,7 +80,7 @@ try {
   await panel.locator('#send').evaluate((button) => button.click());
   await panel.waitForFunction(() => document.getElementById('status')?.textContent.includes('Check complete'));
   assert.equal(await fixture.locator('#secret').inputValue(), 'unchanged');
-  assert.match(await panel.locator('#transcript').innerText(), /Password and other sensitive field types are excluded/);
+  assert.match(await panel.locator('#transcript').textContent(), /Password and other sensitive field types are excluded/);
   await browser.close();
   browser = await chromium.launchPersistentContext(profile, {
     channel: 'chromium', headless: false,
@@ -76,9 +90,9 @@ try {
   const reopened = await browser.newPage();
   await reopened.goto(`chrome-extension://${id}/panel.html`);
   await reopened.waitForFunction(() => document.getElementById('status')?.textContent.includes('Ready'));
-  assert.match(await reopened.locator('#transcript').innerText(), /Revised draft ✓/);
-  assert.match(await reopened.locator('#transcript').innerText(), /Invoice NZ-427 totals \$183.75/);
-  console.log('PASS: MV3 startup, CSP, IndexedDB, Pi tool loop, inspection, typing without submit, password rejection, exclusive ownership, reload and browser-restart persistence');
+  assert.match(await reopened.locator('#transcript').textContent(), /Revised draft ✓/);
+  assert.match(await reopened.locator('#transcript').textContent(), /Invoice NZ-427 totals \$183.75/);
+  console.log('PASS: light default, suggestions, keyboard send, expandable results, MV3 startup, CSP, IndexedDB, Pi tool loop, inspection, typing without submit, password rejection, exclusive ownership, reload and browser-restart persistence');
 } finally {
   await browser?.close();
   await new Promise((done) => server.close(done));

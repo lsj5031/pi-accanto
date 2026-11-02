@@ -5,6 +5,8 @@ import { fauxProvider, fauxAssistantMessage, fauxToolCall } from '@earendil-work
 import { Type } from 'typebox';
 import { Harness, createRegistry, defineExtension, defineTool } from '@earendil-works/pi-durable';
 import { IndexedDbStorage } from '@earendil-works/pi-durable/storage/indexeddb';
+import { marked } from 'marked';
+import DOMPurify from 'dompurify';
 
 const context = BACKGROUND_CONTEXT;
 const $ = (id) => document.getElementById(id);
@@ -20,31 +22,75 @@ function messageText(content) {
   return (content ?? []).map((block) => block.type === 'text' ? block.text : block.type === 'toolCall' ? `Tool: ${block.name}` : '').filter(Boolean).join('\n');
 }
 
+function messageBody(text, formatted) {
+  const body = document.createElement(formatted ? 'div' : 'pre');
+  if (!formatted) {
+    body.textContent = text;
+    return body;
+  }
+  body.className = 'message-body';
+  body.append(DOMPurify.sanitize(marked.parse(text, { async: false }), {
+    RETURN_DOM_FRAGMENT: true,
+    ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'del', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'ul', 'ol', 'li', 'blockquote', 'pre', 'code', 'hr', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'a'],
+    ALLOWED_ATTR: ['href', 'title', 'start'],
+  }));
+  for (const link of body.querySelectorAll('a[href]')) {
+    link.target = '_blank';
+    link.rel = 'noopener noreferrer';
+  }
+  return body;
+}
+
 function render(view) {
-  $('transcript').replaceChildren();
-  for (const entry of view.entries) {
-    for (const message of entry.model ?? []) {
+  const transcript = $('transcript');
+  const scrollTop = transcript.scrollTop;
+  const following = transcript.scrollHeight - scrollTop - transcript.clientHeight < 40;
+  const expanded = new Set([...transcript.querySelectorAll('details[open]')].map((details) => details.dataset.message));
+  const focusedMessage = document.activeElement.closest('details[data-message]')?.dataset.message;
+  transcript.replaceChildren();
+  for (const [entryIndex, entry] of view.entries.entries()) {
+    for (const [messageIndex, message] of (entry.model ?? []).entries()) {
       const text = messageText(message.content) || message.errorMessage;
       if (!text) continue;
       const article = document.createElement('article');
       article.className = message.role;
       const role = document.createElement('strong');
-      role.textContent = message.role === 'toolResult' ? 'Browser result' : message.role;
-      const body = document.createElement('pre');
-      body.textContent = text;
-      article.append(role, body);
-      $('transcript').append(article);
+      role.className = 'message-label';
+      role.textContent = message.role === 'user' ? 'You' : 'Pi Accanto';
+      const toolCalls = Array.isArray(message.content) ? message.content.filter((block) => block.type === 'toolCall') : [];
+      const body = messageBody(text, message.role === 'assistant' && !toolCalls.length);
+      if (message.role === 'toolResult' || toolCalls.length) {
+        const details = document.createElement('details');
+        details.dataset.message = `${entryIndex}:${messageIndex}`;
+        details.open = expanded.has(details.dataset.message);
+        const summary = document.createElement('summary');
+        const names = message.role === 'toolResult' ? [message.toolName] : toolCalls.map((call) => call.name);
+        const label = names.map((name) => name === 'inspect_tab' ? 'Read tab' : name === 'type_in_focused_field' ? 'Edit focused field' : name).join(' · ');
+        summary.textContent = `${label} · ${message.role === 'toolResult' ? message.isError ? 'Failed' : 'Result' : 'Tool call'}`;
+        article.classList.add('activity');
+        article.toggleAttribute('data-error', Boolean(message.isError));
+        details.append(summary, body);
+        article.append(details);
+      } else {
+        article.append(role, body);
+      }
+      transcript.append(article);
     }
   }
   const partial = view.docs['pi.live']?.generation?.message;
   if (partial) {
     const article = document.createElement('article');
-    const body = document.createElement('pre');
-    body.textContent = messageText(partial.content);
-    article.append(body);
-    $('transcript').append(article);
+    article.className = 'assistant';
+    const role = document.createElement('strong');
+    role.className = 'message-label';
+    role.textContent = 'Pi Accanto';
+    const body = messageBody(messageText(partial.content), true);
+    article.append(role, body);
+    transcript.append(article);
   }
-  $('transcript').scrollTop = $('transcript').scrollHeight;
+  if (!transcript.hasChildNodes()) transcript.append($('empty-state').content.cloneNode(true));
+  transcript.scrollTop = following ? transcript.scrollHeight : scrollTop;
+  if (focusedMessage) transcript.querySelector(`details[data-message="${focusedMessage}"] > summary`)?.focus({ preventScroll: true });
 }
 
 async function inTarget(func, args = []) {
@@ -59,11 +105,35 @@ async function start() {
   const { apiKey = '' } = await chrome.storage.session.get('apiKey');
   const scripted = mode === 'scripted';
   $('mode').value = mode;
-  $('provider-notice').textContent = scripted ? 'SCRIPTED PROVIDER · NO AI INFERENCE' : 'LOCAL-GGUF · MAIN';
+  $('provider-notice').textContent = scripted ? 'Offline check' : 'main';
   $('connection-status').textContent = scripted ? 'Offline check mode.' : apiKey ? 'Credential available for this browser session.' : 'Enter the endpoint’s key to connect.';
   $('connection').open = !scripted && !apiKey;
   $('send').textContent = scripted ? 'Run check' : 'Send';
-  if (scripted) $('prompt').value = 'Inspect this tab';
+  if (scripted) {
+    $('prompt').value = 'Inspect this tab';
+    $('help').textContent = 'Offline check stays in this browser.';
+  }
+  document.addEventListener('pointerdown', (event) => {
+    if (!$('connection').contains(event.target)) $('connection').open = false;
+  });
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && $('connection').open) {
+      $('connection').open = false;
+      $('connection').querySelector('summary').focus();
+    }
+  });
+  $('transcript').addEventListener('click', (event) => {
+    const suggestion = event.target.closest('button[data-prompt]');
+    if (!suggestion) return;
+    $('prompt').value = suggestion.dataset.prompt;
+    $('prompt').focus();
+  });
+  $('prompt').addEventListener('keydown', (event) => {
+    if (event.key === 'Enter' && (event.ctrlKey || event.metaKey) && !event.isComposing) {
+      event.preventDefault();
+      if (!$('send').disabled) $('composer').requestSubmit();
+    }
+  });
   $('settings').addEventListener('submit', async (event) => {
     event.preventDefault();
     $('connect').disabled = true;
@@ -141,13 +211,16 @@ async function start() {
   const view = await root.viewState(context);
   render(view.value);
   view.subscribe(render);
-  $('status').textContent = `Ready · Pi Durable 1.4.0 · ${scripted ? 'offline check' : 'main'}`;
+  $('status').textContent = scripted ? 'Ready · Offline check, no AI inference' : apiKey ? 'Ready · History saved on this device' : 'Connect your model to get started';
   $('send').disabled = !scripted && !apiKey;
 
   $('composer').addEventListener('submit', async (event) => {
     event.preventDefault();
-    if (busy) return;
+    if (busy || $('send').disabled) return;
+    const prompt = $('prompt').value.trim();
+    if (!prompt) return;
     busy = true;
+    document.body.dataset.busy = 'true';
     $('send').disabled = true;
     $('stop').disabled = false;
     $('connect').disabled = true;
@@ -155,23 +228,25 @@ async function start() {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
       if (!tab || !/^https?:/.test(tab.url ?? '')) throw new Error('Open a normal website and invoke the extension action first.');
       activeTarget = tab.id;
-      $('target').textContent = `Target: ${tab.title ?? tab.url} · tab ${tab.id}`;
-      const prompt = $('prompt').value.trim();
-      if (!prompt) return;
+      $('target').textContent = tab.title || tab.url;
+      $('target').title = tab.url;
       const typing = prompt.match(/^Type:\s*([\s\S]+)$/i);
       if (scripted) faux.setResponses([
         fauxAssistantMessage(fauxToolCall(typing ? 'type_in_focused_field' : 'inspect_tab', typing ? { text: typing[1] } : {}), { stopReason: 'toolUse' }),
-        fauxAssistantMessage('Scripted compatibility check finished. See the browser result above. No language model was called.'),
+        fauxAssistantMessage('**Scripted compatibility check finished.** See the browser result above. No language model was called.'),
       ]);
-      $('status').textContent = 'Running Pi tool loop…';
+      $('status').textContent = scripted ? 'Running offline check…' : 'Working on this tab…';
+      $('transcript').scrollTop = $('transcript').scrollHeight;
       const submission = await root.submit({ type: 'input', content: scripted ? prompt : `${prompt}\n\nAttached tab: ${tab.title ?? ''} (${tab.url}).`, requestId: crypto.randomUUID() }, context);
       const result = await submission.wait(context);
-      $('status').textContent = result.status === 'done' ? `${scripted ? 'Check' : 'Reply'} complete · saved in IndexedDB` : `Run ended: ${result.status}${result.reason ? ` (${result.reason})` : ''}`;
+      $('status').textContent = result.status === 'done' ? `${scripted ? 'Check' : 'Reply'} complete · Saved on this device` : `Run ended: ${result.status}${result.reason ? ` (${result.reason})` : ''}`;
+      if (result.status === 'done' && $('prompt').value.trim() === prompt) $('prompt').value = '';
     } catch (error) {
       $('status').textContent = `Error: ${error.message}`;
     } finally {
       activeTarget = undefined;
       busy = false;
+      document.body.dataset.busy = 'false';
       $('send').disabled = false;
       $('stop').disabled = true;
       $('connect').disabled = false;

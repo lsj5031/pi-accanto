@@ -46,8 +46,9 @@ try {
   assert.ok(panel, 'Actual side panel must be accessible');
   const contexts = await worker.evaluate(() => chrome.runtime.getContexts({ contextTypes: ['SIDE_PANEL'] }));
   assert.equal(contexts.length, 1);
-  await panel.waitForFunction(() => document.getElementById('status')?.textContent.includes('Ready'));
+  await panel.waitForFunction(() => document.getElementById('status')?.textContent.includes('Connect your model'));
   await panel.screenshot({ path: resolve(artifacts, 'live-settings.png') });
+  await panel.screenshot({ path: resolve(artifacts, 'conversation-setup.png') });
   const config = JSON.parse(await readFile(resolve(homedir(), '.pi/agent/models.json'), 'utf8'));
   const credential = config.providers['local-gguf'].apiKey;
   assert.equal(typeof credential, 'string');
@@ -71,13 +72,14 @@ try {
   assert.match(await panel.locator('#connection-status').textContent(), /Credential available/);
   await fixture.bringToFront();
   await panel.screenshot({ path: resolve(artifacts, 'live-ready.png') });
+  await panel.screenshot({ path: resolve(artifacts, 'conversation-empty.png') });
   await panel.locator('#prompt').fill('Read the invoice in this tab. Calculate the total including delivery. Answer with the invoice number and total.');
-  await panel.locator('#send').evaluate((button) => button.click());
+  await panel.locator('#prompt').press('Control+Enter');
   await panel.waitForFunction(() => !document.getElementById('send')?.disabled, null, { timeout: 150000 });
   const report = {
     chrome: remote.version(), context: contexts[0].contextType, activeTabGranted: true,
     liveStatus: await panel.locator('#status').innerText(),
-    liveTranscript: await panel.locator('#transcript').innerText(), requests, responses,
+    liveTranscript: await panel.locator('#transcript').textContent(), requests, responses,
   };
   const answer = await panel.locator('article.assistant').last().innerText();
   report.liveReadPassed = /90\.75/.test(answer) && /NZ-427/i.test(answer) && /Tool: inspect_tab/.test(report.liveTranscript) && requests.length >= 2;
@@ -85,7 +87,13 @@ try {
   await panel.screenshot({ path: resolve(artifacts, report.liveReadPassed ? 'live-read.png' : 'live-blocked.png') });
   native('prepare');
   native('screenshot', '-Path', resolve(artifacts, 'chrome-sidebar-live.png'));
+  native('screenshot', '-Path', resolve(artifacts, 'conversation-chrome-read.png'));
+  await panel.screenshot({ path: resolve(artifacts, 'conversation-read.png') });
   if (report.liveReadPassed) {
+    const readDetails = panel.locator('article.toolResult details').first();
+    await readDetails.locator('summary').click();
+    await panel.screenshot({ path: resolve(artifacts, 'conversation-details.png') });
+    await readDetails.locator('summary').click();
     report.liveCases = [{ invoice: 'NZ-427', total: '90.75', answer }];
     async function send(prompt) {
       const start = Date.now();
@@ -121,6 +129,8 @@ try {
       if (report.liveEdits.length === 1) {
         native('prepare');
         native('screenshot', '-Path', resolve(artifacts, 'chrome-sidebar-live-edit.png'));
+        native('screenshot', '-Path', resolve(artifacts, 'conversation-chrome-edit.png'));
+        await panel.screenshot({ path: resolve(artifacts, 'conversation-edit.png') });
       }
     }
     await fixture.locator('#password').focus();
@@ -133,6 +143,7 @@ try {
     await panel.locator('#prompt').fill('Do not use tools. Write a very long, detailed 10000-word essay about the history of typography.');
     await panel.locator('#send').evaluate((button) => button.click());
     await pending;
+    await panel.screenshot({ path: resolve(artifacts, 'conversation-running.png') });
     await panel.locator('#stop').evaluate((button) => button.click());
     await panel.waitForFunction(() => !document.getElementById('send')?.disabled, null, { timeout: 15000 });
     report.cancelStatus = await panel.locator('#status').innerText();
@@ -158,8 +169,8 @@ try {
   await panel.waitForFunction(() => document.getElementById('status')?.textContent.includes('Ready'));
   await panel.locator('#send').evaluate((button) => button.click());
   await panel.waitForFunction(() => !document.getElementById('send')?.disabled);
-  assert.match(await panel.locator('#transcript').innerText(), /Invoice NZ-427 has 3 items/);
-  assert.doesNotMatch(await panel.locator('#transcript').innerText(), /never-read/);
+  assert.match(await panel.locator('#transcript').textContent(), /Invoice NZ-427 has 3 items/);
+  assert.doesNotMatch(await panel.locator('#transcript').textContent(), /never-read/);
   await fixture.locator('#draft').focus();
   await panel.locator('#prompt').fill('Type: Hi Alex, your invoice total is $90.75 including delivery.');
   await panel.locator('#send').evaluate((button) => button.click());
@@ -173,7 +184,7 @@ try {
   await panel.locator('#send').evaluate((button) => button.click());
   await panel.waitForFunction(() => !document.getElementById('send')?.disabled);
   assert.equal(await fixture.locator('#password').inputValue(), 'never-read');
-  assert.match(await panel.locator('#transcript').innerText(), /Password and other sensitive field types are excluded/);
+  assert.match(await panel.locator('#transcript').textContent(), /Password and other sensitive field types are excluded/);
   await panel.reload();
   await panel.waitForFunction(() => document.getElementById('status')?.textContent.includes('Ready'));
   assert.match(await panel.locator('#transcript').innerText(), /Hi Alex, your invoice total is/);

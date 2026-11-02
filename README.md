@@ -7,6 +7,16 @@ An extension-only Pi Durable 1.4.0 prototype for Chrome/Edge. No native host,
 BrowserMCP, separate Pi process, or WASM is needed. Node is used only to build
 and test the extension, not at runtime.
 
+## Screenshots
+
+Read and calculate from an existing tab with the real model in Chrome's sidebar.
+
+![Pi Accanto reading an invoice and calculating its total in the Chrome sidebar](docs/screenshots/conversation-read.png)
+
+Replace a focused text field, verify the result, and leave the form unsubmitted.
+
+![Pi Accanto updating the focused customer message and confirming the edit without submitting](docs/screenshots/conversation-edit.png)
+
 ## Try it
 
 Run `npm ci` and `npm run build` to create the extension bundle.
@@ -27,6 +37,13 @@ IndexedDB, or restored after a browser restart. Then ask a page question, or
 focus a normal text input/textarea and ask the assistant to replace its text.
 Editing emits input/change events but never clicks Submit. Websites can react
 to those events, so use a disposable page.
+
+The Conversation UI defaults to light, including on a dark system theme.
+Open the model control in the header for connection settings. Tool calls and
+results are expandable; assistant replies render sanitized Markdown without
+embedded images. Ctrl+Enter (or Cmd+Enter) sends; Enter inserts a new line.
+Scrolling up pauses automatic following while new text arrives. Stop replaces
+Send during a run, and completed instructions clear without erasing a new draft.
 
 The provider is `local-gguf`, at `http://192.168.1.111:11236/v1`, with model
 `main`, OpenAI chat completions, reasoning enabled, and developer-role support

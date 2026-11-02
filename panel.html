@@ -7,29 +7,48 @@
   <link rel="stylesheet" href="panel.css">
 </head>
 <body>
-  <header><span class="brand">π</span><div><h1>Pi Accanto</h1><p>A little help, right beside your tab</p></div></header>
-  <div class="notice" id="provider-notice">LOCAL-GGUF · MAIN</div>
-  <details id="connection"><summary>Model connection</summary>
-    <form id="settings">
-      <p>http://192.168.1.111:11236/v1 · main</p>
-      <label for="mode">Provider</label>
-      <select id="mode"><option value="live">Local model · main</option><option value="scripted">Offline scripted check</option></select>
-      <label for="api-key">API key (kept for this browser session)</label>
-      <input id="api-key" type="password" autocomplete="off" spellcheck="false">
-      <button id="connect">Connect</button>
-      <p id="connection-status" role="status">Enter the endpoint’s key to connect.</p>
-    </form>
-  </details>
-  <section class="runtime"><span id="status" role="status">Opening Pi Durable…</span><p id="target">No tab selected</p></section>
+  <header class="product-header">
+    <h1><span class="brand" aria-hidden="true">π</span>Pi Accanto</h1>
+    <details id="connection">
+      <summary aria-label="Model connection"><span id="provider-notice">main</span><span aria-hidden="true">⌄</span></summary>
+      <form id="settings">
+        <h2>Model connection</h2>
+        <p class="endpoint">http://192.168.1.111:11236/v1 · main</p>
+        <label for="mode">Provider</label>
+        <select id="mode"><option value="live">Local model · main</option><option value="scripted">Offline scripted check</option></select>
+        <label for="api-key">API key</label>
+        <input id="api-key" type="password" autocomplete="off" spellcheck="false" aria-describedby="key-help">
+        <p id="key-help">Kept for this browser session only.</p>
+        <button id="connect">Connect</button>
+        <p id="connection-status" role="status">Enter the endpoint’s key to connect.</p>
+      </form>
+    </details>
+  </header>
+  <section class="tab-context" aria-label="Tab context">
+    <span class="page-icon" aria-hidden="true"><svg viewBox="0 0 20 20"><rect x="3" y="4" width="14" height="12" rx="2"/><path d="M3 8h14"/></svg></span>
+    <div><p id="target">Your selected tab</p><p class="context-hint">Captured when you send</p></div>
+  </section>
   <main id="transcript" aria-label="Conversation" aria-live="polite"></main>
+  <template id="empty-state">
+    <section class="empty-state">
+      <h2>A little help,<br>right beside your tab.</h2>
+      <p>Ask about this page, or focus a text field and tell me what to change.</p>
+      <div class="suggestions">
+        <button type="button" data-prompt="Summarize this page in a few sentences.">Summarize this page <span aria-hidden="true">↗</span></button>
+        <button type="button" data-prompt="Read this page and list its action items.">Find action items <span aria-hidden="true">↗</span></button>
+      </div>
+    </section>
+  </template>
   <footer>
-    <p id="help">Ask about this tab or edit its focused text field. Page content needed for your task goes to the selected model.</p>
+    <p id="status" role="status">Opening Pi Durable…</p>
     <form id="composer">
-      <label for="prompt">Instruction</label>
-      <textarea id="prompt" rows="2" placeholder="What would you like to do in this tab?" required></textarea>
-      <div class="buttons"><button id="send" disabled>Send</button><button type="button" id="stop" disabled>Stop</button></div>
+      <label for="prompt">Ask about this tab</label>
+      <div class="compose-box">
+        <textarea id="prompt" rows="2" placeholder="What would you like to do?" required aria-describedby="help"></textarea>
+        <div class="compose-actions"><span class="scope">This tab only</span><div class="buttons"><button id="send" disabled>Send</button><button type="button" id="stop" disabled>Stop</button></div></div>
+      </div>
     </form>
-    <p class="hint">Works on the tab selected when you send.<br>History stays in this extension’s IndexedDB.</p>
+    <div class="composer-notes"><p id="help">Page content goes to your chosen model.</p><span class="shortcut">Ctrl / ⌘ + Enter</span></div>
   </footer>
   <script type="module" src="panel.js"></script>
 </body>
