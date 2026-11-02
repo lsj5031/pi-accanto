@@ -2,19 +2,36 @@ import { chromium } from 'playwright';
 import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir, homedir } from 'node:os';
 import { resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { execFileSync } from 'node:child_process';
 import { createServer } from 'node:http';
 import assert from 'node:assert/strict';
+import { pdf, reportPdf } from './test/pdf-fixtures.mjs';
 
 const artifacts = resolve('../.amp/in/artifacts/pi-browser-prototype');
 await mkdir(artifacts, { recursive: true });
+const pdfArtifacts = resolve('../.amp/in/artifacts/pi-accanto-pdf');
+await mkdir(pdfArtifacts, { recursive: true });
 const profile = await mkdtemp(`${tmpdir()}/pi-sidebar-`);
+let denyPdf = false;
 const server = createServer((req, res) => {
+  if (req.url.includes('verification.pdf')) {
+    if (denyPdf && req.headers['sec-fetch-dest'] === 'empty') { res.writeHead(403); res.end('Access expired'); return; }
+    res.setHeader('Content-Type', 'application/pdf');
+    res.end(req.url.includes('scan-') ? pdf([null]) : reportPdf);
+    return;
+  }
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
   res.end('<!doctype html><title>Pi Tab verification</title><style>body{font:18px system-ui;max-width:650px;margin:50px auto;color:#223}textarea{width:95%;height:120px;font:18px system-ui;padding:15px}</style><h1>Local invoice draft</h1><p>Invoice NZ-427 has 3 items at $27.50 each and delivery of $8.25.</p><label for="draft">Message to customer</label><textarea id="draft">Hi Alex, your order is ready.</textarea><input type="password" id="password" value="never-read"><script>window.submissions=0;document.addEventListener("submit",()=>window.submissions++);</script>');
 });
 await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
-const native = (action, ...args) => execFileSync('powershell.exe', ['-NoProfile', '-File', resolve('native-ui.ps1'), '-Action', action, ...args], { encoding: 'utf8', windowsHide: true });
+const native = (action, ...args) => {
+  try { return execFileSync('powershell.exe', ['-NoProfile', '-File', resolve('native-ui.ps1'), '-Action', action, ...args], { encoding: 'utf8', windowsHide: true }); }
+  catch (error) {
+    if (action !== 'screenshot') execFileSync('powershell.exe', ['-NoProfile', '-File', resolve('native-ui.ps1'), '-Action', 'screenshot', '-Path', resolve(pdfArtifacts, 'native-action-failure.png')], { windowsHide: true });
+    throw error;
+  }
+};
 let browser;
 let remote;
 try {
@@ -57,7 +74,8 @@ try {
   panel.on('request', (request) => {
     if (request.url().endsWith('/chat/completions')) {
       const body = request.postDataJSON();
-      requests.push({ model: body.model, roles: body.messages.map((message) => message.role), tools: body.tools?.map((tool) => tool.function.name), passwordLeaked: JSON.stringify(body).includes('never-read') });
+      const contents = JSON.stringify(body.messages);
+      requests.push({ model: body.model, roles: body.messages.map((message) => message.role), tools: body.tools?.map((tool) => tool.function.name), passwordLeaked: contents.includes('never-read'), oldTaskPresent: contents.includes('NZ-429'), otherTaskPresent: contents.includes('YY-880') });
     }
   });
   panel.on('response', (response) => {
@@ -150,15 +168,135 @@ try {
     assert.match(report.cancelStatus, /aborted|cancel/i);
     report.recovery = await send('Reply with exactly: Ready for the next task. Do not use tools.');
     assert.match(report.recovery.answer, /Ready for the next task/);
+    const other = await browser.newPage();
+    await other.goto(`http://127.0.0.1:${server.address().port}/other`);
+    await other.evaluate(() => {
+      document.title = 'Pi Tab verification · Other task';
+      document.querySelector('p').textContent = 'Invoice YY-880 has 6 items at $11.20 each and delivery of $2.10.';
+    });
+    await other.locator('#draft').fill('Other task draft');
+    await fixture.locator('#draft').focus();
+    await other.bringToFront();
+    const followupStart = requests.length;
+    const followup = await send('Without using tools, what was the last invoice number and its total that we calculated?');
+    assert.match(followup.answer, /NZ-429/);
+    assert.match(followup.answer, /47\.00/);
+    assert.ok(requests[followupStart].oldTaskPresent, 'Follow-up must retain previous page context');
+    await send('Inspect the attached page again. Which invoice is on it?');
+    assert.match(await panel.locator('article.toolResult').last().textContent(), /NZ-429/);
+    await panel.screenshot({ path: resolve(artifacts, 'attachment-live-followup.png') });
     await panel.reload();
     await panel.waitForFunction(() => document.getElementById('status')?.textContent.includes('Ready'));
-    assert.match(await panel.locator('#transcript').innerText(), /Ready for the next task/);
+    assert.equal(await panel.locator('#target').textContent(), 'Pi Tab verification');
+    // The panel button cannot grant activeTab; this tab has never received the toolbar gesture.
+    await panel.locator('#use-current-tab').evaluate((button) => button.click());
+    await panel.waitForFunction(() => !document.getElementById('use-current-tab').disabled);
+    assert.match(await panel.locator('#status').textContent(), /toolbar action/);
+    assert.equal(await panel.locator('#target').textContent(), 'Pi Tab verification');
+    native('workflow');
+    await panel.locator('#use-current-tab').evaluate((button) => button.click());
+    await panel.waitForFunction(() => document.getElementById('target').textContent.includes('Other task'));
+    const changedStart = requests.length;
+    const changed = await send('Read this invoice and calculate its total including delivery. Give the invoice number and total with two decimals.');
+    assert.match(changed.answer, /YY-880/);
+    assert.match(changed.answer, /69\.30/);
+    assert.ok(requests.slice(changedStart).every((request) => !request.oldTaskPresent), 'Prior task must not enter model context');
+    assert.match(await panel.locator('#transcript').textContent(), /NZ-429/);
+    await panel.screenshot({ path: resolve(artifacts, 'attachment-live-changed.png') });
+    await panel.locator('#new-conversation').evaluate((button) => button.click());
+    await panel.waitForFunction(() => document.getElementById('status').textContent.includes('New conversation'));
+    assert.equal(await panel.locator('article').count(), 0);
+    await panel.screenshot({ path: resolve(artifacts, 'attachment-live-new.png') });
+    const freshStart = requests.length;
+    await send('Reply with exactly: Fresh conversation ready. Do not use tools.');
+    assert.ok(requests.slice(freshStart).every((request) => !request.oldTaskPresent && !request.otherTaskPresent));
+    await other.close();
+    await fixture.bringToFront();
+    const beforeUnavailable = requests.length;
+    await panel.locator('#prompt').fill('Replace the focused field with must not redirect.');
+    await panel.locator('#send').evaluate((button) => button.click());
+    await panel.waitForFunction(() => !document.getElementById('send').disabled);
+    assert.match(await panel.locator('#status').textContent(), /attached tab is unavailable/);
+    assert.equal(requests.length, beforeUnavailable, 'Unavailable target must not invoke the model');
+    assert.equal(await fixture.locator('#draft').inputValue(), report.liveEdits.at(-1).text);
+    await panel.screenshot({ path: resolve(artifacts, 'attachment-live-unavailable.png') });
+    report.attachment = { followup, changed, preservedFollowupContext: true, oldTaskExcluded: true, toolbarRequiredForNewTab: true, newConversationClearsContext: true, closedTargetBlocked: true };
+    await panel.reload();
+    await panel.waitForFunction(() => document.getElementById('status')?.textContent.includes('Ready'));
+    assert.match(await panel.locator('#transcript').innerText(), /Fresh conversation ready/);
+    assert.doesNotMatch(await panel.locator('#transcript').innerText(), /NZ-429/);
     assert.equal(await panel.locator('#send').isEnabled(), true);
     assert.equal(await panel.locator('#api-key').inputValue(), '');
     report.liveReloadPassed = true;
     assert.ok(responses.some((response) => response.status === 200 && response.contentType.includes('text/event-stream')));
+
+    // Real built-in PDF viewer + unmodified extension manifest + toolbar activeTab grant.
+    const pdfTab = await browser.newPage();
+    // Native workflow finds the browser by the PDF filename in its title.
+    const pdfUrl = `http://127.0.0.1:${server.address().port}/Pi%20Tab%20verification.pdf`;
+    await pdfTab.goto(pdfUrl);
+    await pdfTab.bringToFront();
+    await pdfTab.waitForLoadState('networkidle');
+    await panel.locator('#use-current-tab').evaluate(button => button.click());
+    await panel.waitForFunction(() => !document.getElementById('use-current-tab').disabled);
+    assert.match(await panel.locator('#status').textContent(), /toolbar action/);
+    native('workflow');
+    await panel.waitForFunction(async () => (await chrome.tabs.query({ active: true, currentWindow: true }))[0]?.status === 'complete');
+    await panel.locator('#new-conversation').evaluate(button => button.click());
+    await panel.waitForFunction(() => !document.getElementById('new-conversation').disabled);
+    assert.match(await panel.locator('#status').textContent(), /New conversation/);
+    const pdfRead = await send('Read this PDF using inspect_tab. Give the Harbour project code, total cost of both depots plus delivery, reference code and approval status. Cite physical PDF page numbers for the facts.');
+    assert.match(pdfRead.answer, /H-731/);
+    assert.match(pdfRead.answer, /165\.85/);
+    assert.match(pdfRead.answer, /KOWHAI-92/);
+    assert.match(pdfRead.answer, /pending/i);
+    const pdfResult = JSON.parse(await panel.locator('article.toolResult pre').last().textContent());
+    assert.deepEqual(pdfResult.pages.map(page => page.page), [1, 2, 3]);
+    await panel.screenshot({ path: resolve(pdfArtifacts, 'pdf-live-answer.png') });
+    native('prepare');
+    native('screenshot', '-Path', resolve(pdfArtifacts, 'pdf-native-chrome.png'));
+    await fixture.bringToFront();
+    const pdfFollowup = await send('Inspect the attached document again and report its reference code.');
+    assert.match(pdfFollowup.answer, /KOWHAI-92/);
+    assert.match(await panel.locator('article.toolResult').last().textContent(), /"format":"pdf"/);
+    const localPdf = resolve(profile, 'Pi Tab verification local.pdf');
+    await writeFile(localPdf, reportPdf);
+    await pdfTab.goto(pathToFileURL(localPdf).href);
+    await pdfTab.waitForLoadState('networkidle');
+    await pdfTab.bringToFront();
+    native('workflow');
+    await panel.waitForFunction(async () => (await chrome.tabs.query({ active: true, currentWindow: true }))[0]?.status === 'complete');
+    await panel.locator('#new-conversation').evaluate(button => button.click());
+    await panel.waitForFunction(() => !document.getElementById('new-conversation').disabled);
+    const localRead = await send('Read this local PDF. Give the project code and the reference code with page numbers.');
+    assert.match(localRead.answer, /H-731/);
+    assert.match(localRead.answer, /KOWHAI-92/);
+    await panel.screenshot({ path: resolve(pdfArtifacts, 'pdf-local-live-answer.png') });
+    await pdfTab.goto(`http://127.0.0.1:${server.address().port}/scan-Pi%20Tab%20verification.pdf`);
+    await pdfTab.waitForLoadState('networkidle');
+    await pdfTab.bringToFront();
+    native('workflow');
+    await panel.waitForFunction(async () => (await chrome.tabs.query({ active: true, currentWindow: true }))[0]?.status === 'complete');
+    await panel.locator('#new-conversation').evaluate(button => button.click());
+    await panel.waitForFunction(() => !document.getElementById('new-conversation').disabled);
+    const scanRead = await send('Read this PDF and summarize its contents in at most two sentences.');
+    assert.match(await panel.locator('article.toolResult').last().textContent(), /No extractable text/);
+    assert.match(scanRead.answer, /no.*(?:text|extract)|cannot.*(?:read|extract)|scann|image.only|OCR/i);
+    await panel.locator('#transcript').evaluate(element => { element.scrollTop += element.querySelector('article.assistant:last-child').getBoundingClientRect().top - element.getBoundingClientRect().top; });
+    await panel.screenshot({ path: resolve(pdfArtifacts, 'pdf-scan-live-answer.png') });
+    denyPdf = true;
+    const deniedRead = await send('Try reading the attached PDF again. Explain the result in at most two sentences.');
+    assert.match(await panel.locator('article.toolResult').last().textContent(), /HTTP 403/);
+    assert.match(deniedRead.answer, /403|access|fetch|forbidden/i);
+    await panel.locator('#transcript').evaluate(element => { element.scrollTop += element.querySelector('article.assistant:last-child').getBoundingClientRect().top - element.getBoundingClientRect().top; });
+    await panel.screenshot({ path: resolve(pdfArtifacts, 'pdf-denied-live-answer.png') });
+    denyPdf = false;
+    report.pdf = { pdfRead, pdfFollowup, localRead, scanRead, deniedRead, toolbarGrantRequired: true, pages: pdfResult.pages.map(page => page.page) };
+    await writeFile(resolve(pdfArtifacts, 'pdf-live-report.json'), JSON.stringify({ chrome: remote.version(), context: contexts[0].contextType, ...report.pdf }, null, 2));
+    await pdfTab.close();
+    await fixture.bringToFront();
     await writeFile(resolve(artifacts, 'sidebar-report.json'), JSON.stringify(report, null, 2));
-    console.log('PASS: live reads 3/3, edits 3/3, password exclusion, streaming responses, cancellation, recovery, and reload.');
+    console.log('PASS: live HTML controls and attachment cases; online/local PDF answers with page references, PDF follow-up while another tab active, scan honesty and fetch denial.');
   }
   assert.ok(requests.every((request) => request.model === 'main' && !request.roles.includes('developer')));
   // Check the actual sidebar's browser tools independently if inference is blocked.

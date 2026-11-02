@@ -8,9 +8,9 @@
 </head>
 <body>
   <header class="product-header">
-    <h1><span class="brand" aria-hidden="true">π</span>Pi Accanto</h1>
+    <h1><img class="brand" src="assets/beside.svg" alt="" width="28" height="28">Pi Accanto</h1>
     <details id="connection">
-      <summary aria-label="Model connection"><span id="provider-notice">main</span><span aria-hidden="true">⌄</span></summary>
+      <summary aria-label="Model connection"><span id="provider-notice">main</span><span class="connection-chevron" aria-hidden="true"></span></summary>
       <form id="settings">
         <h2>Model connection</h2>
         <p class="endpoint">http://192.168.1.111:11236/v1 · main</p>
@@ -26,8 +26,12 @@
   </header>
   <section class="tab-context" aria-label="Tab context">
     <span class="page-icon" aria-hidden="true"><svg viewBox="0 0 20 20"><rect x="3" y="4" width="14" height="12" rx="2"/><path d="M3 8h14"/></svg></span>
-    <div><p id="target">Your selected tab</p><p class="context-hint">Captured when you send</p></div>
+    <div><p id="target">Current tab</p><p id="target-hint" class="context-hint">Attaches on first send</p></div>
   </section>
+  <nav class="conversation-actions" aria-label="Conversation actions">
+    <button type="button" id="use-current-tab" disabled>Use current tab</button>
+    <button type="button" id="new-conversation" disabled>New conversation</button>
+  </nav>
   <main id="transcript" aria-label="Conversation" aria-live="polite"></main>
   <template id="empty-state">
     <section class="empty-state">
@@ -42,10 +46,10 @@
   <footer>
     <p id="status" role="status">Opening Pi Durable…</p>
     <form id="composer">
-      <label for="prompt">Ask about this tab</label>
+      <label for="prompt" id="composer-target">First send attaches to the current tab</label>
       <div class="compose-box">
         <textarea id="prompt" rows="2" placeholder="What would you like to do?" required aria-describedby="help"></textarea>
-        <div class="compose-actions"><span class="scope">This tab only</span><div class="buttons"><button id="send" disabled>Send</button><button type="button" id="stop" disabled>Stop</button></div></div>
+        <div class="compose-actions"><span class="scope">Follow-ups stay attached</span><div class="buttons"><button id="send" disabled>Send</button><button type="button" id="stop" disabled>Stop</button></div></div>
       </div>
     </form>
     <div class="composer-notes"><p id="help">Page content goes to your chosen model.</p><span class="shortcut">Ctrl / ⌘ + Enter</span></div>

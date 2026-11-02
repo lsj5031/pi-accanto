@@ -81,6 +81,59 @@ try {
   await panel.waitForFunction(() => document.getElementById('status')?.textContent.includes('Check complete'));
   assert.equal(await fixture.locator('#secret').inputValue(), 'unchanged');
   assert.match(await panel.locator('#transcript').textContent(), /Password and other sensitive field types are excluded/);
+  async function send(prompt) {
+    await panel.locator('#prompt').evaluate((input, value) => { input.value = value; }, prompt);
+    await panel.locator('#send').evaluate((button) => button.click());
+    await panel.waitForFunction(() => !document.getElementById('send').disabled);
+  }
+  const other = await browser.newPage();
+  await other.goto(`http://127.0.0.1:${server.address().port}/other`);
+  await other.evaluate(() => { document.title = 'Other task'; document.querySelector('p').textContent = 'Other invoice YY-880 totals $69.30.'; });
+  await other.locator('#draft').fill('Other draft');
+  await fixture.locator('#draft').focus();
+  await other.bringToFront();
+  await send('Inspect the same attached tab again');
+  assert.match(await panel.locator('article.toolResult').last().textContent(), /NZ-427/);
+  assert.equal(await panel.locator('#target').textContent(), 'Disposable draft');
+  await send('Type: Follow-up on original tab');
+  assert.equal(await fixture.locator('#draft').inputValue(), 'Follow-up on original tab');
+  assert.equal(await other.locator('#draft').inputValue(), 'Other draft');
+  await panel.reload();
+  await panel.waitForFunction(() => document.getElementById('status')?.textContent.includes('Ready'));
+  assert.equal(await panel.locator('#target').textContent(), 'Disposable draft');
+  await send('After reload, inspect the attached tab');
+  assert.match(await panel.locator('article.toolResult').last().textContent(), /NZ-427/);
+  await panel.locator('#use-current-tab').evaluate((button) => button.click());
+  await panel.waitForFunction(() => document.getElementById('target').textContent === 'Other task');
+  assert.match(await panel.locator('#transcript').textContent(), /NZ-427/);
+  assert.match(await panel.locator('.task-boundary').last().textContent(), /Other task/);
+  await send('Inspect the explicitly attached other tab');
+  assert.match(await panel.locator('article.toolResult').last().textContent(), /YY-880/);
+  await panel.screenshot({ path: resolve(artifacts, 'attachment-changed.png') });
+  await panel.reload();
+  await panel.waitForFunction(() => document.getElementById('status')?.textContent.includes('Ready'));
+  assert.match(await panel.locator('#transcript').textContent(), /NZ-427/);
+  assert.match(await panel.locator('#transcript').textContent(), /YY-880/);
+  // Choosing the already attached tab keeps the current sequence intact.
+  const count = await panel.locator('article.user').count();
+  await panel.locator('#use-current-tab').evaluate((button) => button.click());
+  await panel.waitForFunction(() => !document.getElementById('use-current-tab').disabled);
+  assert.equal(await panel.locator('article.user').count(), count);
+  await other.close();
+  await fixture.bringToFront();
+  await send('Type: must not redirect');
+  assert.match(await panel.locator('#status').textContent(), /attached tab is unavailable/);
+  assert.equal(await fixture.locator('#draft').inputValue(), 'Follow-up on original tab');
+  assert.equal(await panel.locator('article.user').count(), count);
+  await panel.screenshot({ path: resolve(artifacts, 'attachment-unavailable.png') });
+  await panel.locator('#new-conversation').evaluate((button) => button.click());
+  await panel.waitForFunction(() => document.getElementById('status').textContent.includes('New conversation'));
+  assert.equal(await panel.locator('article').count(), 0);
+  assert.equal(await panel.locator('#target').textContent(), 'Disposable draft');
+  await panel.screenshot({ path: resolve(artifacts, 'attachment-new.png') });
+  await send('Fresh task after New conversation');
+  assert.match(await panel.locator('#transcript').textContent(), /NZ-427/);
+  assert.doesNotMatch(await panel.locator('#transcript').textContent(), /YY-880|Revised draft/);
   await browser.close();
   browser = await chromium.launchPersistentContext(profile, {
     channel: 'chromium', headless: false,
@@ -90,9 +143,13 @@ try {
   const reopened = await browser.newPage();
   await reopened.goto(`chrome-extension://${id}/panel.html`);
   await reopened.waitForFunction(() => document.getElementById('status')?.textContent.includes('Ready'));
-  assert.match(await reopened.locator('#transcript').textContent(), /Revised draft ✓/);
   assert.match(await reopened.locator('#transcript').textContent(), /Invoice NZ-427 totals \$183.75/);
-  console.log('PASS: light default, suggestions, keyboard send, expandable results, MV3 startup, CSP, IndexedDB, Pi tool loop, inspection, typing without submit, password rejection, exclusive ownership, reload and browser-restart persistence');
+  assert.doesNotMatch(await reopened.locator('#transcript').textContent(), /YY-880|Revised draft/);
+  assert.match(await reopened.locator('#target-hint').textContent(), /Unavailable/);
+  await reopened.locator('#send').click();
+  await reopened.waitForFunction(() => !document.getElementById('send').disabled);
+  assert.match(await reopened.locator('#status').textContent(), /attached tab is unavailable/);
+  console.log('PASS: existing browser controls; stable attachment for read/edit while browsing, reload, explicit change with visible history, same-target continuity, closed-target rejection, New conversation, browser-restart invalidation and persistence');
 } finally {
   await browser?.close();
   await new Promise((done) => server.close(done));

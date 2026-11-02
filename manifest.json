@@ -4,10 +4,14 @@
   "version": "0.2.0",
   "description": "Pi Durable sidebar assistant using your local-gguf model, with an offline compatibility mode.",
   "permissions": ["sidePanel", "activeTab", "scripting", "storage"],
-  "host_permissions": ["http://192.168.1.111/*"],
-  "action": { "default_title": "Open Pi Accanto" },
+  "host_permissions": ["http://192.168.1.111/*", "file:///*"],
+  "icons": { "16": "assets/icon-16.png", "32": "assets/icon-32.png", "48": "assets/icon-48.png", "128": "assets/icon-128.png" },
+  "action": {
+    "default_title": "Open Pi Accanto",
+    "default_icon": { "16": "assets/icon-16.png", "32": "assets/icon-32.png" }
+  },
   "commands": { "_execute_action": { "suggested_key": { "default": "Alt+Shift+P" } } },
   "side_panel": { "default_path": "panel.html" },
   "background": { "service_worker": "background.js" },
-  "content_security_policy": { "extension_pages": "script-src 'self'; object-src 'self'; connect-src http://192.168.1.111:11236" }
+  "content_security_policy": { "extension_pages": "script-src 'self'; object-src 'self'; worker-src 'self'; connect-src 'self' http: https: file:" }
 }
