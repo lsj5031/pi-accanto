@@ -82,7 +82,7 @@ try {
   assert.match(await panel.locator('#transcript').textContent(), /Revised draft ✓/);
   await panel.screenshot({ path: resolve(artifacts, 'restored.png') });
   const duplicate = await browser.newPage();
-  await duplicate.goto(`chrome-extension://${id}/panel.html`);
+  await duplicate.goto(panel.url());
   await duplicate.waitForFunction(() => document.getElementById('panel-owner')?.hidden === false);
   assert.equal(await duplicate.locator('#send').isDisabled(), true);
   await duplicate.setViewportSize({ width: 320, height: 640 });
@@ -174,6 +174,7 @@ try {
   await send('Fresh task after New conversation');
   assert.match(await panel.locator('#transcript').textContent(), /NZ-427/);
   assert.doesNotMatch(await panel.locator('#transcript').textContent(), /YY-880|Revised draft/);
+  const conversationUrl = panel.url();
   await browser.close();
   browser = await chromium.launchPersistentContext(profile, {
     channel: 'chromium', headless: false,
@@ -181,7 +182,7 @@ try {
     viewport: { width: 420, height: 850 },
   });
   const reopened = await browser.newPage();
-  await reopened.goto(`chrome-extension://${id}/panel.html`);
+  await reopened.goto(conversationUrl);
   await reopened.waitForFunction(() => document.getElementById('status')?.textContent.includes('Ready'));
   assert.match(await reopened.locator('#transcript').textContent(), /Invoice NZ-427 totals \$183.75/);
   assert.doesNotMatch(await reopened.locator('#transcript').textContent(), /YY-880|Revised draft/);

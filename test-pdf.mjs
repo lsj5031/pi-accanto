@@ -56,6 +56,7 @@ try {
   await worker.evaluate(url => chrome.tabs.create({ url, active: false }), `chrome-extension://${id}/panel.html`);
   let panel = await next;
   await panel.waitForFunction(() => document.getElementById('status').textContent.includes('Ready'));
+  const conversationUrl = panel.url();
   const errors = [];
   panel.on('pageerror', error => errors.push(error.message));
   async function send(prompt = 'Inspect this PDF') {
@@ -181,7 +182,7 @@ try {
   await fileToggle.click();
   // Chrome reloads the extension after changing this setting; reopen its UI.
   if (panel.isClosed()) panel = await browser.newPage();
-  await panel.goto(`chrome-extension://${id}/panel.html`);
+  await panel.goto(conversationUrl);
   await panel.waitForFunction(() => document.getElementById('status').textContent.includes('Ready'));
   assert.equal(await panel.evaluate(() => chrome.extension.isAllowedFileSchemeAccess()), false);
   await fixture.bringToFront();
@@ -191,7 +192,7 @@ try {
   await panel.screenshot({ path: resolve(artifacts, 'pdf-file-access-required.png') });
   await fileToggle.click();
   if (panel.isClosed()) panel = await browser.newPage();
-  await panel.goto(`chrome-extension://${id}/panel.html`);
+  await panel.goto(conversationUrl);
   await panel.waitForFunction(() => document.getElementById('status').textContent.includes('Ready'));
   assert.equal(await panel.evaluate(() => chrome.extension.isAllowedFileSchemeAccess()), true);
   await manager.close();

@@ -115,11 +115,37 @@ text. **Web research** includes no attached-page excerpt. Only your question is
 shown as your chat bubble; the excerpt stays in the model's context and local
 conversation history.
 
+### Independent conversations and concurrent agents
+
+Each browser tab gets its own default conversation. The **Conversation** picker
+above the page context lets you resume saved conversations; it does not combine
+their histories. Conversations have separate databases, runtime locks, page
+attachments, source approvals and Code Mode memory. Model/search configuration
+and site permissions are shared across the browser profile.
+
+For concurrent work, choose **Open in tab** before starting a reply in each
+conversation. It moves that conversation into an ordinary browser tab and
+restores its history. Keep those agent tabs open while you work elsewhere:
+Agent A can research a contract while Agent B calculates an invoice. Stop or
+handoff in one conversation does not affect the other. Your model endpoint may
+queue simultaneous requests if it cannot serve them in parallel.
+
+Chrome can pause a hidden tab-specific side panel, so hidden sidebars are not
+the execution surface for long concurrent runs. **Open in tab** completes the
+ownership handoff before activating the new tab. Closing an agent tab ends its
+runtime; unattended execution with all its views closed is not supported.
+
+After updating, reload the extension at `chrome://extensions`. History from
+the earlier single-conversation build remains in **Earlier conversation** in
+the picker. Browser restart invalidates old page attachments; choose a saved
+conversation, then explicitly attach a page again. Saved history is retained.
+
 If another panel has the conversation open, choose **Continue here**. Pi stops
 any running reply, closes the other panel's runtime, and restores saved history
 here. The other panel becomes inactive and can take the conversation back with
-the same action. One panel writes at a time; there is no concurrent replay of
-the same task.
+the same action. One panel writes each conversation at a time; different
+conversations can run concurrently. If its owning sidebar is hidden, return to
+that website and use **Open in tab** there before moving the conversation.
 
 In **Model connection**, select **Local model · main**, enter the endpoint's
 API key, and click **Connect**. The extension checks that `/models` lists `main`.
@@ -346,10 +372,15 @@ still access the network through explicitly invoked search/source tools.
 
 ## Architecture
 
-- Sidebar owns the Pi harness for its lifetime.
+- Each sidebar or agent tab owns its conversation's Pi harness for its lifetime.
+- The service worker serializes conversation-catalog and per-tab mapping updates.
+  Tab mappings and the browser-session token live in session storage; conversation
+  IDs/titles are saved locally. Closing a website does not delete its history.
 - Pi Durable calls custom extension tools through `chrome.scripting`.
-- IndexedDB stores the conversation, including inspected text and field contents.
-- A Web Lock prevents two panels from opening the same store concurrently.
+- Each conversation has its own IndexedDB database, including inspected text and
+  field contents, with separate live/scripted stores. Earlier stores are retained.
+- A conversation-specific Web Lock prevents two panels from opening the same
+  store concurrently; different conversations have independent locks.
   **Continue here** requests a cooperative handoff over BroadcastChannel; the
   old owner aborts/joins its tasks and closes storage before releasing the lock.
 - Attachment is an application entry in Pi Durable's transcript, bound to tab ID,
@@ -372,6 +403,7 @@ npm run build
 npx playwright install chromium
 npm test
 npm run test:pdf
+npm run test:conversations
 ```
 
 `npm test` loads the bundled MV3 extension in an isolated Chromium profile with
@@ -390,6 +422,13 @@ redirect/size errors, cancellation/recovery, navigation during extraction,
 embedded-viewer guidance and HTML regression controls. PDF artifacts go under
 `../.amp/in/artifacts/pi-accanto-pdf/`.
 
+`npm run test:conversations` starts two independent tab-bound conversations and
+holds both Code Mode workers at a fixture search request simultaneously. It
+checks Stop/handoff isolation, separate histories and sandbox values, per-task
+source approvals, saved-conversation selection, Open in tab, and reload. Fixture
+results do not consume provider quota. It also captures the 320px layout.
+Evidence is under `../.amp/in/artifacts/pi-accanto-conversations/`.
+
 `npm run test:sidebar` runs the actual Windows Chrome sidebar. It uses native
 mouse input on Chrome's Extensions menu and toolbar action, then attaches to
 the real `SIDE_PANEL` target through CDP. The shipped manifest is unmodified;
@@ -397,8 +436,11 @@ the test asserts the action granted `activeTab` access. It enters the credential
 from `%USERPROFILE%\.pi\agent\models.json` without logging it and attempts live
 inference, then checks inspection, focused editing without submission, password
 exclusion, Stop/recovery, and reload with the real model. It also runs the
-scripted browser-tool controls independently. Multi-tab cases check follow-up
-recall and fresh excerpts from the original tab, a sidebar site-access request
+scripted browser-tool controls independently. Before browsing other tabs, it
+uses **Open in tab** to transfer the conversation and records that transition
+separately: hidden tab-specific sidebars can pause. Multi-tab cases then run in
+that ordinary agent tab and check follow-up recall and fresh excerpts from the
+original tab, a site-access request
 and real Chrome confirmation for a new tab, exclusion of prior tasks from actual model requests, fresh context
 after **New chat**, and rejection of closed targets before model invocation.
 The native sidebar also checks copying a real-model answer to the system clipboard.

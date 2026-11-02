@@ -7,6 +7,7 @@
     "test": "node test.mjs",
     "test:pdf": "node test-pdf.mjs",
     "test:research": "node test-research.mjs",
+    "test:conversations": "node test-conversations.mjs",
     "test:sidebar": "node test-sidebar.mjs"
   },
   "dependencies": {

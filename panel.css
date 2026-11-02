@@ -35,6 +35,9 @@ summary { cursor: pointer; }
 #connection-status { margin-top: 12px; }
 input, select { width: 100%; padding: 9px 10px; border: 1px solid #c9d3c7; border-radius: 6px; background: #fff; }
 #key-help { margin-top: 6px; }
+#conversation-bar { display: flex; align-items: center; gap: 8px; margin: 4px 20px; flex-shrink: 0; }
+#conversation { min-width: 0; font-size: 13px; padding: 6px 8px; text-overflow: ellipsis; }
+#open-conversation { flex-shrink: 0; padding: 6px 8px; background: transparent; color: var(--muted); font-size: 13px; }
 .tab-context { display: grid; grid-template-columns: 28px minmax(0, 1fr) auto; align-items: center; gap: 10px; margin: 0 20px; padding: 12px 0 16px; border-bottom: 1px solid var(--line); flex-shrink: 0; }
 .page-icon { display: grid; place-items: center; width: 28px; height: 32px; border-radius: 6px; color: #647660; background: #f0f3ed; flex-shrink: 0; }
 .page-icon svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.5; }

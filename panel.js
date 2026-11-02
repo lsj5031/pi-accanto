@@ -27,9 +27,33 @@ let busy = false;
 let releaseLock;
 let ownsConversation = false;
 let accessTab;
+let conversationId;
+let conversationTabId;
+let useConversationTab = true;
 const endpoint = 'http://192.168.1.111:11236/v1';
 
 const toolLabels = { inspect_tab: 'Read tab', type_in_focused_field: 'Edit focused field', search_page: 'Search this page', read_page_section: 'Read page section', web_search: 'Search the web', read_web_source: 'Read web source', codemode: 'Code Mode' };
+
+async function conversationRequest(options = {}) {
+  const result = await chrome.runtime.sendMessage({ type: 'conversation', tabId: conversationTabId, id: conversationId, ...options });
+  if (result.error) throw new Error(result.error);
+  return result;
+}
+
+function showConversations(conversations) {
+  $('conversation').replaceChildren(...conversations.map(item => new Option(item.title, item.id)));
+  $('conversation').value = conversationId;
+  const title = conversations.find(item => item.id === conversationId)?.title || 'Conversation';
+  document.title = `Pi Accanto · ${title}`;
+}
+
+async function currentTab(preferConversation = false) {
+  const [active] = await chrome.tabs.query({ active: true, currentWindow: true });
+  // An agent opened as an ordinary extension tab still reads its source tab,
+  // rather than attempting to attach to its own extension UI.
+  const id = preferConversation || active?.url?.startsWith(chrome.runtime.getURL('')) ? conversationTabId : active?.id;
+  return id === undefined ? active : chrome.tabs.get(id).catch(() => undefined);
+}
 
 function nestedActivity(calls) {
   const list = document.createElement('ul');
@@ -235,7 +259,7 @@ async function showAttachment() {
   if (!ownsConversation) return;
   const target = attachment;
   const revision = ++attachmentRefresh;
-  const [current] = await chrome.tabs.query({ active: true, currentWindow: true });
+  const current = await currentTab();
   let available = false;
   let hint = 'Send a message to start';
   if (target) {
@@ -258,6 +282,7 @@ async function showAttachment() {
   $('site-access').hidden = !needsAccess;
   $('site-access-host').textContent = accessTab?.origin ?? '';
   $('allow-site').disabled = busy;
+  $('conversation').disabled = $('open-conversation').disabled = busy;
   $('target').textContent = webResearch ? 'Web research' : target?.title || current?.title || 'Current tab';
   $('target').title = webResearch ? '' : target?.url || current?.url || '';
   $('composer-target').textContent = webResearch ? 'Ask the web · No tab attached' : target ? `Message about: ${target.title}` : 'Ask about this page';
@@ -267,8 +292,8 @@ async function showAttachment() {
   $('use-current-tab').textContent = available ? 'Chat about this tab' : 'Use this page';
 }
 
-async function attachCurrent() {
-  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+async function attachCurrent(preferConversation = false) {
+  const tab = await currentTab(preferConversation);
   if (!tab) throw new Error('Open a website first.');
   if (tab.url && !/^(https?:|file:)/.test(tab.url)) throw new Error('This viewer URL is unsupported. Open the original PDF directly in a normal http(s) or file tab. Browser-internal, extension, blob and data viewers cannot be read.');
   if (tab.status === 'loading') throw new Error('The current document is still loading. Wait for it to finish and try again.');
@@ -292,9 +317,11 @@ async function attachCurrent() {
   // A supported context head keeps old tasks in durable history, outside the next model request.
   await writeTarget({ target });
   attachment = target;
+  useConversationTab = false;
   webResearch = false;
   sources.clear();
   showSources();
+  showConversations((await conversationRequest({ title: target.title })).conversations);
   await showAttachment();
 }
 
@@ -308,6 +335,37 @@ async function writeTarget(data) {
 }
 
 async function start() {
+  const activateOnReady = location.hash === '#continue';
+  const parameters = new URLSearchParams(location.search);
+  const requestedTab = parameters.get('tab');
+  const conversation = await conversationRequest({
+    tabId: requestedTab !== null ? Number(requestedTab) : undefined,
+    id: parameters.get('conversation') || undefined,
+  });
+  conversationId = conversation.id;
+  conversationTabId = conversation.tabId;
+  browserSession = conversation.browserSession;
+  parameters.set('conversation', conversationId);
+  if (conversationTabId !== undefined) parameters.set('tab', conversationTabId);
+  window.history.replaceState(null, '', `${location.pathname}?${parameters}${location.hash}`);
+  showConversations(conversation.conversations);
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area === 'local' && changes.conversations) showConversations(Object.values(changes.conversations.newValue || {}));
+  });
+  $('conversation').addEventListener('change', async () => {
+    if (busy) { $('conversation').value = conversationId; return; }
+    try {
+      const selected = await conversationRequest({ id: $('conversation').value });
+      parameters.set('conversation', selected.id);
+      location.href = `${location.pathname}?${parameters}`;
+    } catch (error) { $('status').textContent = error.message; }
+  });
+  $('open-conversation').addEventListener('click', () => {
+    if (busy || !ownsConversation) return;
+    // Keep the sidebar visible until it has released ownership. Chrome can
+    // pause it if the destination tab is activated before the handoff completes.
+    void chrome.tabs.create({ url: `${location.origin}${location.pathname}?${parameters}#continue`, active: false });
+  });
   const { mode = 'live' } = await chrome.storage.local.get('mode');
   const { apiKey = '' } = await chrome.storage.session.get('apiKey');
   const scripted = mode === 'scripted';
@@ -423,7 +481,7 @@ async function start() {
       $('connect').disabled = false;
     }
   });
-  const ownership = new BroadcastChannel('pi-accanto-ownership');
+  const ownership = new BroadcastChannel(`pi-accanto-ownership-${conversationId}`);
   const showInactive = (message) => {
     $('panel-owner').hidden = false;
     $('owner-message').textContent = message;
@@ -431,8 +489,9 @@ async function start() {
     $('send').disabled = true;
     $('stop').disabled = true;
     for (const element of document.body.children) {
-      if (element.id !== 'panel-owner') element.inert = true;
+      if (element.id !== 'panel-owner' && element.id !== 'conversation-bar') element.inert = true;
     }
+    $('open-conversation').disabled = true;
   };
   await new Promise((resolve, reject) => {
     let requesting = false;
@@ -455,22 +514,19 @@ async function start() {
       requesting = true;
       $('continue-here').disabled = true;
       $('continue-here').textContent = 'Switching…';
-      navigator.locks.request('pi-tab-prototype-owner', hold).catch(reject);
+      navigator.locks.request(`pi-accanto-owner-${conversationId}`, hold).catch(reject);
       ownership.postMessage('continue-here');
       // Retry the cooperative request if the owner was still starting up.
       reminder = setInterval(() => ownership.postMessage('continue-here'), 1000);
     };
     $('continue-here').onclick = continueHere;
     if (location.hash === '#continue') {
-      window.history.replaceState(null, '', location.pathname);
+      window.history.replaceState(null, '', `${location.pathname}${location.search}`);
       showInactive('Switching this conversation here…');
       continueHere();
-    } else navigator.locks.request('pi-tab-prototype-owner', { ifAvailable: true }, hold).catch(reject);
+    } else navigator.locks.request(`pi-accanto-owner-${conversationId}`, { ifAvailable: true }, hold).catch(reject);
     addEventListener('pagehide', () => { clearInterval(reminder); ownership.close(); });
   });
-  const session = await chrome.storage.session.get('browserSession');
-  browserSession = session.browserSession || crypto.randomUUID();
-  await chrome.storage.session.set({ browserSession });
   const faux = fauxProvider();
   const models = createModels();
   models.setProvider(faux.provider);
@@ -530,7 +586,8 @@ async function start() {
     }),
   ] }));
   registry.install(createCodemodeExtension({ sandbox: codeMode.sandbox, models: false }));
-  harness = await Harness.open(await IndexedDbStorage.open(scripted ? 'pi-tab-prototype-v1' : 'pi-tab-live-v1'), {
+  const database = scripted ? 'pi-tab-prototype-v1' : 'pi-tab-live-v1';
+  harness = await Harness.open(await IndexedDbStorage.open(conversationId === 'legacy' ? database : `${database}-${conversationId}`), {
     models, registry, settings: { retry: { enabled: false }, stream: { timeoutMs: 120000, maxRetries: 0 } },
   }, context);
   root = await harness.root(context);
@@ -545,6 +602,7 @@ async function start() {
     cursor = page.next;
   } while (cursor);
   const savedTarget = [...history.values()].findLast((entry) => entry.kind === 'accanto.target')?.data;
+  useConversationTab = !savedTarget;
   attachment = savedTarget?.target;
   webResearch = Boolean(savedTarget?.web);
   const view = await root.viewState(context);
@@ -604,6 +662,7 @@ async function start() {
     $(id).addEventListener('click', async () => {
       if (busy || !ownsConversation) return;
       busy = true;
+      $('conversation').disabled = $('open-conversation').disabled = true;
       $('use-current-tab').disabled = $('new-conversation').disabled = $('web-conversation').disabled = $('send').disabled = true;
       try {
         if (id === 'new-conversation' || id === 'web-conversation') {
@@ -632,6 +691,7 @@ async function start() {
     const prompt = $('prompt').value.trim();
     if (!prompt) return;
     busy = true;
+    $('conversation').disabled = $('open-conversation').disabled = true;
     $('status').textContent = webResearch ? 'Starting web research…' : 'Reading page context…';
     document.body.dataset.busy = 'true';
     $('send').disabled = true;
@@ -639,7 +699,7 @@ async function start() {
     $('connect').disabled = true;
     $('use-current-tab').disabled = $('new-conversation').disabled = $('web-conversation').disabled = true;
     try {
-      if (!attachment && !webResearch) await attachCurrent();
+      if (!attachment && !webResearch) await attachCurrent(useConversationTab);
       let pageContext;
       try {
         if (!webResearch) {
@@ -686,6 +746,10 @@ async function start() {
   $('stop').addEventListener('click', () => { void root.abort(context); codeMode.stop(); });
   // Runs do not resume automatically: old tab IDs are not safe after browser restart.
   addEventListener('pagehide', () => { codeMode.stop(); void harness.close(context).finally(() => releaseLock?.()); });
+  if (activateOnReady) {
+    const tab = await chrome.tabs.getCurrent();
+    if (tab) await chrome.tabs.update(tab.id, { active: true });
+  }
 }
 
 start().catch((error) => { $('status').textContent = `Startup failed: ${error.message}`; releaseLock?.(); });

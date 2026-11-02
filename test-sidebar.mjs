@@ -55,14 +55,19 @@ try {
   const worker = browser.serviceWorkers()[0] ?? await browser.waitForEvent('serviceworker');
   const [attachedTab] = await worker.evaluate(() => chrome.tabs.query({ active: true, currentWindow: true }));
   assert.match(attachedTab.url, /^http:\/\/127\.0\.0\.1:/, 'Toolbar action must grant activeTab access');
+  let contexts = [];
+  const panelDeadline = Date.now() + 10000;
+  while (!contexts.length && Date.now() < panelDeadline) {
+    contexts = await worker.evaluate(() => chrome.runtime.getContexts({ contextTypes: ['SIDE_PANEL'] }));
+    if (!contexts.length) await new Promise(resolve => setTimeout(resolve, 100));
+  }
+  assert.equal(contexts.length, 1, 'Toolbar action must open an actual side panel');
   native('screenshot', '-Path', resolve(artifacts, 'native-open.png'));
   const port = (await readFile(resolve(profile, 'DevToolsActivePort'), 'utf8')).split('\n')[0];
   remote = await chromium.connectOverCDP(`http://127.0.0.1:${port}`);
   console.log('Connected browser:', remote.version());
-  const panel = remote.contexts().flatMap((context) => context.pages()).find((page) => page.url().endsWith('/panel.html'));
+  let panel = remote.contexts().flatMap((context) => context.pages()).find((page) => new URL(page.url()).pathname === '/panel.html');
   assert.ok(panel, 'Actual side panel must be accessible');
-  const contexts = await worker.evaluate(() => chrome.runtime.getContexts({ contextTypes: ['SIDE_PANEL'] }));
-  assert.equal(contexts.length, 1);
   await panel.waitForFunction(() => document.getElementById('status')?.textContent.includes('Connect your model'));
   await panel.screenshot({ path: resolve(artifacts, 'live-settings.png') });
   await panel.screenshot({ path: resolve(artifacts, 'conversation-setup.png') });
@@ -71,18 +76,21 @@ try {
   assert.equal(typeof credential, 'string');
   const requests = [];
   const responses = [];
-  panel.on('request', (request) => {
-    if (request.url().endsWith('/chat/completions')) {
-      const body = request.postDataJSON();
-      const contents = JSON.stringify(body.messages);
-      requests.push({ model: body.model, roles: body.messages.map((message) => message.role), pageInput: body.messages.findLast((message) => message.role === 'user')?.content, tools: body.tools?.map((tool) => tool.function.name), passwordLeaked: contents.includes('never-read'), oldTaskPresent: contents.includes('NZ-429'), otherTaskPresent: contents.includes('YY-880') });
-    }
-  });
-  panel.on('response', (response) => {
-    if (response.url().endsWith('/chat/completions')) {
-      responses.push({ status: response.status(), contentType: response.headers()['content-type'] });
-    }
-  });
+  function observe(page) {
+    page.on('request', (request) => {
+      if (request.url().endsWith('/chat/completions')) {
+        const body = request.postDataJSON();
+        const contents = JSON.stringify(body.messages);
+        requests.push({ model: body.model, roles: body.messages.map((message) => message.role), pageInput: body.messages.findLast((message) => message.role === 'user')?.content, tools: body.tools?.map((tool) => tool.function.name), passwordLeaked: contents.includes('never-read'), oldTaskPresent: contents.includes('NZ-429'), otherTaskPresent: contents.includes('YY-880') });
+      }
+    });
+    page.on('response', (response) => {
+      if (response.url().endsWith('/chat/completions')) {
+        responses.push({ status: response.status(), contentType: response.headers()['content-type'] });
+      }
+    });
+  }
+  observe(panel);
   await panel.locator('#api-key').fill(credential);
   await Promise.all([panel.waitForEvent('load'), panel.locator('#connect').evaluate((button) => button.click())]);
   await panel.waitForFunction(() => document.getElementById('status')?.textContent.includes('Ready'));
@@ -180,6 +188,16 @@ try {
     assert.match(report.cancelStatus, /aborted|cancel/i);
     report.recovery = await send('Reply with exactly: Ready for the next task. Do not use tools.');
     assert.match(report.recovery.answer, /Ready for the next task/);
+    // Chrome can pause a hidden tab-specific sidebar. Move this conversation to
+    // a regular agent tab for the cross-tab follow-ups, using the product action.
+    const originalSidebar = panel;
+    const agentOpened = browser.waitForEvent('page');
+    await panel.locator('#open-conversation').click();
+    panel = await agentOpened;
+    await panel.waitForFunction(() => document.getElementById('status').textContent.includes('Ready'));
+    observe(panel);
+    assert.equal(await originalSidebar.locator('#send').isDisabled(), true);
+    report.followupsContext = 'TAB via Open in tab; initial live answers, editing, clipboard and Stop were SIDE_PANEL';
     const other = await browser.newPage();
     await other.goto(`http://127.0.0.1:${server.address().port}/other`);
     await other.evaluate(() => {
