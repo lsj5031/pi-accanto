@@ -6,11 +6,13 @@
     "build": "node build.mjs",
     "test": "node test.mjs",
     "test:pdf": "node test-pdf.mjs",
+    "test:research": "node test-research.mjs",
     "test:sidebar": "node test-sidebar.mjs"
   },
   "dependencies": {
     "@earendil-works/chord": "1.4.0",
     "@earendil-works/pi-ai": "1.4.0",
+    "@earendil-works/pi-codemode": "1.4.0",
     "@earendil-works/pi-durable": "1.4.0",
     "dompurify": "3.4.17",
     "marked": "18.1.2",

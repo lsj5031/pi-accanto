@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Code Mode invoice demo</title>
+<style>
+  body { max-width: 640px; margin: 48px auto; padding: 0 24px; font: 18px/1.6 system-ui, sans-serif; color: #27322d; background: #fff; }
+  h1 { font-size: 28px; line-height: 1.2; }
+  #line-items { padding: 20px; background: #f0f3ed; border-radius: 8px; }
+  button { padding: 10px 16px; font: inherit; border: 0; border-radius: 6px; color: white; background: #256650; cursor: pointer; }
+  button:disabled { opacity: .55; cursor: default; }
+  button:focus-visible { outline: 2px solid #256650; outline-offset: 3px; }
+</style>
+<h1>Code Mode invoice demo</h1>
+<p>A disposable invoice for checking Pi Accanto. All amounts are NZD.</p>
+<h2 id="invoice">Invoice CM-204</h2>
+<p id="line-items">Line items: 3 at 27.50; delivery 8.25.</p>
+<p>Ask Pi to use Code Mode to read the quantity, unit price and delivery, calculate the total, and cite this page. Expand Code Mode to inspect its script and reading activity.</p>
+<button id="change-invoice" type="button">Load second invoice</button>
+<p>Then ask Pi to recalculate. Reload this page to start again. This demo does not calculate or display the total for Pi.</p>
+<script>
+  document.getElementById('change-invoice').addEventListener('click', (event) => {
+    document.getElementById('invoice').textContent = 'Invoice CM-509';
+    document.getElementById('line-items').textContent = 'Line items: 4 at 19.60; delivery 6.15.';
+    event.currentTarget.disabled = true;
+    event.currentTarget.textContent = 'Second invoice loaded';
+  });
+</script>
+</html>

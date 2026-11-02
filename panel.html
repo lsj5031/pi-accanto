@@ -24,9 +24,17 @@
       </form>
     </details>
   </header>
+  <section id="panel-owner" class="tab-switch" aria-label="Continue conversation" hidden>
+    <div class="notice-copy">
+      <p id="owner-message" role="status"></p>
+      <p class="context-hint">Continue here to stop the other panel’s reply and restore your saved history.</p>
+    </div>
+    <button type="button" id="continue-here">Continue here</button>
+  </section>
   <section class="tab-context" aria-label="Tab context">
     <span class="page-icon" aria-hidden="true"><svg viewBox="0 0 20 20"><rect x="3" y="4" width="14" height="12" rx="2"/><path d="M3 8h14"/></svg></span>
     <div><p id="target">Current tab</p><p id="target-hint" class="context-hint">Send a message to start</p></div>
+    <button type="button" id="web-conversation" disabled title="Start web research without reading a tab">Web research</button>
     <button type="button" id="new-conversation" disabled title="Clear this conversation and start fresh">New chat</button>
   </section>
   <section id="tab-switch" class="tab-switch" aria-label="Change conversation page" hidden>
@@ -34,6 +42,48 @@
     <p class="context-hint">Start a new task here. Earlier messages stay visible.</p>
     <button type="button" id="use-current-tab" disabled>Chat about this tab</button>
   </section>
+  <section id="site-access" class="tab-switch" aria-label="Page access" hidden>
+    <div class="notice-copy">
+      <p id="site-access-host"></p>
+      <p class="context-hint">Allow page access on this site. Chrome remembers your choice; revoke it in extension settings.</p>
+    </div>
+    <button type="button" id="allow-site">Allow this site</button>
+  </section>
+  <details id="research-settings" class="research-settings">
+    <summary>Web search <span id="search-state">· Exa</span></summary>
+    <form id="search-settings">
+      <label for="search-provider">Search provider</label>
+      <select id="search-provider"><option value="exa">Exa · No key needed</option><option value="tinyfish">TinyFish · Your API key</option><option value="brave">Brave · Your API key</option></select>
+      <p>Search sends the query you ask for. Snippets and answers stay in conversation history. Page search needs an attached tab.</p>
+      <p id="exa-help">Exa works without an account or API key. Shared limits apply; if unavailable, open the search in your browser.</p>
+      <div id="tinyfish-settings" hidden>
+        <label for="tinyfish-key">TinyFish API key</label>
+        <input id="tinyfish-key" type="password" autocomplete="off" spellcheck="false">
+        <p>Uses your TinyFish account quota. Key kept for this browser session only.</p>
+        <p><a href="https://docs.tinyfish.ai/search-api" target="_blank" rel="noopener noreferrer">TinyFish search and plans</a></p>
+      </div>
+      <div id="brave-settings" hidden>
+      <label for="brave-key">Brave Search API key</label>
+      <input id="brave-key" type="password" autocomplete="off" spellcheck="false">
+      <p>Key kept for this browser session only.</p>
+      <label class="checkbox"><input id="brave-storage" type="checkbox">My Brave plan includes storage rights for results.</label>
+      <p><a href="https://brave.com/search/api/" target="_blank" rel="noopener noreferrer">Brave plans and terms</a></p>
+      </div>
+      <button id="save-search">Save choice</button>
+      <button type="button" id="disable-search" hidden>Forget key</button>
+      <p id="search-status" role="status">Applies to new searches in this browser session.</p>
+    </form>
+  </details>
+  <section id="search-fallback" class="research-settings" aria-label="Search unavailable" hidden>
+    <p id="search-failure" role="status"></p>
+    <a id="open-search" target="_blank" rel="noopener noreferrer">Open search in browser ↗</a>
+    <p>Opens a new tab without attaching it. On a page you choose, select New chat, then Allow this site if offered. Your next message starts on that page.</p>
+  </section>
+  <details id="sources" class="research-settings" hidden>
+    <summary>Web sources <span id="source-count"></span></summary>
+    <p class="source-note">Search snippets are not full-page evidence. Allow individual sources, then ask Pi to read them. Access resets with each task or panel restart.</p>
+    <div id="source-list"></div>
+  </details>
   <main id="transcript" aria-label="Conversation" aria-live="polite"></main>
   <template id="empty-state">
     <section class="empty-state">

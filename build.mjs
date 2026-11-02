@@ -6,6 +6,12 @@ const result = await build({
   entryPoints: ['panel.js'], bundle: true, format: 'esm', platform: 'browser',
   outfile: 'dist/panel.js', metafile: true, minify: false,
 });
+await build({
+  entryPoints: ['codemode-worker.js'], bundle: true, format: 'esm', platform: 'browser',
+  outfile: 'dist/codemode-worker.js',
+});
+await copyFile('node_modules/quickjs-wasi/quickjs.wasm', 'dist/quickjs.wasm');
+await copyFile('node_modules/quickjs-wasi/LICENSE', 'dist/QUICKJS-WASI-LICENSE');
 for (const file of ['manifest.json', 'panel.html', 'panel.css', 'background.js']) {
   await copyFile(file, `dist/${file}`);
 }

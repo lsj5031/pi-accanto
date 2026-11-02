@@ -75,7 +75,7 @@ try {
     if (request.url().endsWith('/chat/completions')) {
       const body = request.postDataJSON();
       const contents = JSON.stringify(body.messages);
-      requests.push({ model: body.model, roles: body.messages.map((message) => message.role), tools: body.tools?.map((tool) => tool.function.name), passwordLeaked: contents.includes('never-read'), oldTaskPresent: contents.includes('NZ-429'), otherTaskPresent: contents.includes('YY-880') });
+      requests.push({ model: body.model, roles: body.messages.map((message) => message.role), pageInput: body.messages.findLast((message) => message.role === 'user')?.content, tools: body.tools?.map((tool) => tool.function.name), passwordLeaked: contents.includes('never-read'), oldTaskPresent: contents.includes('NZ-429'), otherTaskPresent: contents.includes('YY-880') });
     }
   });
   panel.on('response', (response) => {
@@ -100,7 +100,9 @@ try {
     liveTranscript: await panel.locator('#transcript').textContent(), requests, responses,
   };
   const answer = await panel.locator('article.assistant').last().innerText();
-  report.liveReadPassed = /90\.75/.test(answer) && /NZ-427/i.test(answer) && /Tool: inspect_tab/.test(report.liveTranscript) && requests.length >= 2;
+  report.liveReadPassed = /90\.75/.test(answer) && /NZ-427/i.test(answer)
+    && /Attached page context captured/.test(JSON.stringify(requests[0]?.pageInput))
+    && /Invoice NZ-427/.test(JSON.stringify(requests[0]?.pageInput));
   console.log('Live result:', report.liveStatus, report.liveTranscript);
   await panel.screenshot({ path: resolve(artifacts, report.liveReadPassed ? 'live-read.png' : 'live-blocked.png') });
   native('prepare');
@@ -116,9 +118,11 @@ try {
     report.clipboardCopyPassed = true;
     await panel.screenshot({ path: resolve(artifacts, 'ux-native-copy.png') });
     const readDetails = panel.locator('article.toolResult details').first();
-    await readDetails.locator('summary').click();
-    await panel.screenshot({ path: resolve(artifacts, 'conversation-details.png') });
-    await readDetails.locator('summary').click();
+    if (await readDetails.count()) {
+      await readDetails.locator('summary').click();
+      await panel.screenshot({ path: resolve(artifacts, 'conversation-details.png') });
+      await readDetails.locator('summary').click();
+    }
     report.liveCases = [{ invoice: 'NZ-427', total: '90.75', answer }];
     async function send(prompt) {
       const start = Date.now();
@@ -137,7 +141,8 @@ try {
       const result = await send('Read the invoice again: its values have changed. Calculate the total including delivery with two decimal places and give the current invoice number.');
       assert.ok(result.answer.includes(item.total), result.answer);
       assert.ok(result.answer.includes(item.invoice), result.answer);
-      assert.ok(requests.length - before >= 2, 'Fresh page inspection must reach the model');
+      assert.ok(requests.length > before, 'The changed page must reach the model');
+      assert.ok(JSON.stringify(requests[before].pageInput).includes(item.text), 'Each question must include a fresh page excerpt');
       report.liveCases.push({ ...item, ...result });
     }
     report.liveEdits = [];
@@ -189,18 +194,21 @@ try {
     assert.match(followup.answer, /NZ-429/);
     assert.match(followup.answer, /47\.00/);
     assert.ok(requests[followupStart].oldTaskPresent, 'Follow-up must retain previous page context');
-    await send('Inspect the attached page again. Which invoice is on it?');
-    assert.match(await panel.locator('article.toolResult').last().textContent(), /NZ-429/);
+    const inspected = await send('Inspect the attached page again. Which invoice is on it?');
+    assert.match(inspected.answer, /NZ-429/);
+    assert.match(JSON.stringify(requests.at(-1).pageInput), /Invoice NZ-429/);
     await panel.screenshot({ path: resolve(artifacts, 'attachment-live-followup.png') });
     await panel.reload();
     await panel.waitForFunction(() => document.getElementById('status')?.textContent.includes('Ready'));
     assert.equal(await panel.locator('#target').textContent(), 'Pi Tab verification');
-    // The panel button cannot grant activeTab; this tab has never received the toolbar gesture.
+    // This tab has never received activeTab. Grant its site from the actual sidebar instead.
     await panel.locator('#use-current-tab').evaluate((button) => button.click());
     await panel.waitForFunction(() => !document.getElementById('use-current-tab').disabled);
     assert.match(await panel.locator('#status').textContent(), /toolbar action/);
     assert.equal(await panel.locator('#target').textContent(), 'Pi Tab verification');
-    native('workflow');
+    await panel.locator('#allow-site').click();
+    native('allow-site');
+    await panel.waitForFunction(() => document.getElementById('status').textContent.includes('Site access allowed'));
     await panel.locator('#use-current-tab').evaluate((button) => button.click());
     await panel.waitForFunction(() => document.getElementById('target').textContent.includes('Other task'));
     const changedStart = requests.length;
@@ -216,7 +224,9 @@ try {
     await panel.screenshot({ path: resolve(artifacts, 'attachment-live-new.png') });
     const freshStart = requests.length;
     await send('Reply with exactly: Fresh conversation ready. Do not use tools.');
-    assert.ok(requests.slice(freshStart).every((request) => !request.oldTaskPresent && !request.otherTaskPresent));
+    assert.ok(requests.slice(freshStart).every((request) => !request.oldTaskPresent));
+    assert.equal(requests[freshStart].roles.filter((role) => role === 'user').length, 1, 'New chat excludes previous questions');
+    assert.match(JSON.stringify(requests[freshStart].pageInput), /Invoice YY-880/, 'New chat includes its newly attached page');
     await other.close();
     await fixture.bringToFront();
     const beforeUnavailable = requests.length;
@@ -227,7 +237,7 @@ try {
     assert.equal(requests.length, beforeUnavailable, 'Unavailable target must not invoke the model');
     assert.equal(await fixture.locator('#draft').inputValue(), report.liveEdits.at(-1).text);
     await panel.screenshot({ path: resolve(artifacts, 'attachment-live-unavailable.png') });
-    report.attachment = { followup, changed, preservedFollowupContext: true, oldTaskExcluded: true, toolbarRequiredForNewTab: true, newConversationClearsContext: true, closedTargetBlocked: true };
+    report.attachment = { followup, changed, preservedFollowupContext: true, oldTaskExcluded: true, sidebarSiteGrant: true, newConversationClearsContext: true, closedTargetBlocked: true };
     await panel.reload();
     await panel.waitForFunction(() => document.getElementById('status')?.textContent.includes('Ready'));
     assert.match(await panel.locator('#transcript').innerText(), /Fresh conversation ready/);
@@ -237,7 +247,7 @@ try {
     report.liveReloadPassed = true;
     assert.ok(responses.some((response) => response.status === 200 && response.contentType.includes('text/event-stream')));
 
-    // Real built-in PDF viewer + unmodified extension manifest + toolbar activeTab grant.
+    // Real built-in PDF viewer uses the persistent site grant, with no toolbar click on this tab.
     const pdfTab = await browser.newPage();
     // Native workflow finds the browser by the PDF filename in its title.
     const pdfUrl = `http://127.0.0.1:${server.address().port}/Pi%20Tab%20verification.pdf`;
@@ -246,8 +256,7 @@ try {
     await pdfTab.waitForLoadState('networkidle');
     await panel.locator('#use-current-tab').evaluate(button => button.click());
     await panel.waitForFunction(() => !document.getElementById('use-current-tab').disabled);
-    assert.match(await panel.locator('#status').textContent(), /toolbar action/);
-    native('workflow');
+    assert.equal(await panel.locator('#target').getAttribute('title'), pdfUrl);
     await panel.waitForFunction(async () => (await chrome.tabs.query({ active: true, currentWindow: true }))[0]?.status === 'complete');
     await panel.locator('#new-conversation').evaluate(button => button.click());
     await panel.waitForFunction(() => !document.getElementById('new-conversation').disabled);
@@ -282,7 +291,9 @@ try {
     await pdfTab.goto(`http://127.0.0.1:${server.address().port}/scan-Pi%20Tab%20verification.pdf`);
     await pdfTab.waitForLoadState('networkidle');
     await pdfTab.bringToFront();
-    native('workflow');
+    await panel.locator('#use-current-tab').evaluate(button => button.click());
+    await panel.waitForFunction(() => !document.getElementById('use-current-tab').disabled);
+    assert.match(await panel.locator('#target').getAttribute('title'), /scan-Pi%20Tab%20verification\.pdf$/);
     await panel.waitForFunction(async () => (await chrome.tabs.query({ active: true, currentWindow: true }))[0]?.status === 'complete');
     await panel.locator('#new-conversation').evaluate(button => button.click());
     await panel.waitForFunction(() => !document.getElementById('new-conversation').disabled);

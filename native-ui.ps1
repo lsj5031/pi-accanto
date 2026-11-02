@@ -39,7 +39,7 @@ if ($Action -eq 'prepare' -or $Action -eq 'workflow') {
     for ($i = 0; $i -lt 30; $i++) {
       Start-Sleep -Milliseconds 100
       $all = $window.FindAll([System.Windows.Automation.TreeScope]::Descendants, [System.Windows.Automation.Condition]::TrueCondition)
-      $extension = $all | Where-Object { $_.Current.Name -like 'Pi Accanto*Prototype*' -and $_.Current.ControlType -eq [System.Windows.Automation.ControlType]::Button -and $_.Current.BoundingRectangle.Width -gt 0 } | Select-Object -First 1
+      $extension = $all | Where-Object { $_.Current.Name -like 'Pi Accanto*' -and $_.Current.ControlType -eq [System.Windows.Automation.ControlType]::Button -and $_.Current.BoundingRectangle.Width -gt 0 } | Select-Object -First 1
       if ($extension) { Click-Button $extension; break }
     }
     if (-not $extension) { throw 'Pi Tab extension action not found in menu' }
@@ -51,9 +51,13 @@ if ($Action -eq 'prepare' -or $Action -eq 'workflow') {
   if (-not $button) { throw 'Extensions toolbar button not found' }
   Click-Button $button
 } elseif ($Action -eq 'open') {
-  $button = $buttons | Where-Object { $_.Current.Name -like '*Pi Accanto*Prototype*' } | Select-Object -First 1
+  $button = $buttons | Where-Object { $_.Current.Name -like '*Pi Accanto*' } | Select-Object -First 1
   if (-not $button) { throw 'Pi Tab extension action not found' }
   Click-Button $button
+} elseif ($Action -eq 'allow-site') {
+  $button = $buttons | Where-Object { $_.Current.Name -eq 'Allow' } | Select-Object -First 1
+  if (-not $button) { throw 'Site permission confirmation not found in the isolated test browser' }
+  $button.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
 } elseif ($Action -eq 'screenshot') {
   Add-Type -AssemblyName System.Drawing
   $rect = $window.Current.BoundingRectangle

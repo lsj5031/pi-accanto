@@ -1,0 +1,411 @@
+import assert from 'node:assert/strict';
+import { createServer } from 'node:http';
+import { mkdtemp, rm, cp, readFile, writeFile, mkdir } from 'node:fs/promises';
+import { tmpdir, homedir } from 'node:os';
+import { resolve } from 'node:path';
+import { chromium } from 'playwright';
+
+const artifacts = resolve('../.amp/in/artifacts/pi-accanto-research');
+await mkdir(artifacts, { recursive: true });
+const profile = await mkdtemp(`${tmpdir()}/accanto-research-`);
+const extension = resolve(profile, 'extension');
+await cp('dist', extension, { recursive: true });
+const manifest = JSON.parse(await readFile(resolve(extension, 'manifest.json'), 'utf8'));
+// Only the disposable fixture and provider are pregranted; production requests
+// optional host access from explicit user gestures.
+manifest.host_permissions.push('http://127.0.0.1/*', 'https://developer.mozilla.org/*', 'https://api.search.tinyfish.ai/*', 'https://api.search.brave.com/*');
+await writeFile(resolve(extension, 'manifest.json'), JSON.stringify(manifest));
+let sourceReads = 0;
+const invoiceDemo = await readFile('docs/examples/code-mode-invoice.html', 'utf8');
+const server = createServer((req, res) => {
+  if (req.url === '/code-mode-invoice.html') { res.setHeader('Content-Type', 'text/html; charset=utf-8'); res.end(invoiceDemo); return; }
+  if (req.url === '/broken') { res.writeHead(503); res.end('Unavailable'); return; }
+  if (req.url === '/slow') { setTimeout(() => { res.end('Slow source'); }, 15000); return; }
+  if (req.url === '/source') sourceReads++;
+  res.setHeader('Content-Type', 'text/html; charset=utf-8');
+  res.end(`<!doctype html><title>Research fixture</title><p>Line items: 3 at 27.50; delivery 8.25.</p><p>${'ordinary introduction '.repeat(300)}</p><p>Clause 19: the cancellation fee is $47.20.</p><textarea>private-field-value</textarea><input type="password" value="never-read"><p hidden>hidden-clause</p>`);
+});
+await new Promise((ready) => server.listen(0, '127.0.0.1', ready));
+const origin = `http://127.0.0.1:${server.address().port}`;
+let browser, panel;
+const report = { provider: 'Live Exa outcome and synthetic protocol fixtures are recorded separately. TinyFish and Brave successes use fixtures only; invalid-key endpoint checks are real.', checks: [], modelRequests: [], modelResponses: [] };
+try {
+  browser = await chromium.launchPersistentContext(profile, { channel: 'chromium', headless: false, args: [`--disable-extensions-except=${extension}`, `--load-extension=${extension}`], viewport: { width: 380, height: 850 }, deviceScaleFactor: 2 });
+  const worker = browser.serviceWorkers()[0] ?? await browser.waitForEvent('serviceworker');
+  await worker.evaluate(() => chrome.storage.local.set({ mode: 'scripted' }));
+  const fixture = await browser.newPage();
+  await fixture.goto(origin);
+  const next = browser.waitForEvent('page');
+  await worker.evaluate((url) => chrome.tabs.create({ url, active: false }), `chrome-extension://${new URL(worker.url()).host}/panel.html`);
+  panel = await next;
+  const errors = [];
+  panel.on('pageerror', (error) => errors.push(error.message));
+  await panel.waitForFunction(() => document.getElementById('status').textContent.includes('Ready'));
+  const send = async (prompt) => {
+    await panel.locator('#prompt').fill(prompt);
+    await panel.locator('#send').evaluate((button) => button.click());
+    await panel.waitForFunction(() => !document.getElementById('send').disabled, null, { timeout: 45000 });
+    return panel.locator('article.toolResult').last().textContent();
+  };
+  await panel.screenshot({ path: resolve(artifacts, 'ready.png') });
+  await send('Find: cancellation fee');
+  let result = JSON.parse(await panel.locator('article.toolResult pre').last().textContent());
+  assert.ok(result.matches[0].offset > 4000);
+  assert.match(result.matches[0].text, /\$47\.20/);
+  assert.doesNotMatch(JSON.stringify(result), /never-read|private-field-value|hidden-clause/);
+  assert.match(await send('Find: nonexistent-evidence'), /"matches":\[\]/);
+  const calculation = String.raw`const page = JSON.parse(await tools.inspect_tab({})); const values = page.text.match(/(\d+) at (\d+\.\d{2}); delivery (\d+\.\d{2})/); text({quantity: Number(values[1]), unitPrice: Number(values[2]), delivery: Number(values[3]), total: Number(values[1]) * Number(values[2]) + Number(values[3]), url: page.url});`;
+  assert.match(await send(`Code: ${calculation}`), /90\.75/);
+  await panel.locator('article.toolResult details').last().evaluate((element) => { element.open = true; });
+  assert.match(await panel.locator('article.toolResult .nested-activity').last().textContent(), /Read tab · ok/);
+  await panel.screenshot({ path: resolve(artifacts, 'calculation.png') });
+  await fixture.goto(`${origin}/code-mode-invoice.html`);
+  assert.match(await send(`Code: ${calculation}`), /90\.75/);
+  await fixture.locator('#change-invoice').click();
+  assert.match(await send(`Code: ${calculation}`), /84\.55/);
+  assert.ok((await panel.locator('article.toolResult').last().textContent()).includes('/code-mode-invoice.html'));
+  await fixture.screenshot({ path: resolve(artifacts, 'code-mode-demo.png') });
+  await fixture.goto(origin);
+  assert.match(await send('Code: await tools.type_in_focused_field({text:"forbidden"});'), /does not exist/i);
+  assert.equal(await fixture.locator('textarea').inputValue(), 'private-field-value');
+  assert.match(await send('Code: text([typeof fetch, typeof chrome, typeof document]);'), /undefined/);
+  assert.match(await send('Code: while(true) {}'), /timeout|interrupt|exceeded/i);
+  assert.match(await send('Code: const a=[]; while(true) a.push(new Array(100000).fill(1));'), /memory|allocation/i);
+  assert.match(await send('Code: text(17*23);'), /391/);
+  await send('Code: store("oldTask", "private old task"); text("stored");');
+  assert.match(await send('Code: text(load("oldTask"));'), /private old task/);
+  report.checks.push('Page search beyond 4,000 characters; exclusions; empty match; worker calculation 90.75; unapproved editing rejected; no direct APIs; infinite loop and allocation bounded; recovery 391');
+  await panel.locator('#web-conversation').evaluate((button) => button.click());
+  await panel.waitForFunction(() => !document.getElementById('send').disabled);
+  assert.match(await panel.locator('#composer-target').textContent(), /No tab attached/);
+  assert.match(await send('Code: text(load("oldTask") ?? "fresh task");'), /fresh task/);
+  assert.match(await send('Code: await tools.inspect_tab({});'), /No tab attached/);
+  assert.equal(await panel.locator('#search-provider').inputValue(), 'exa');
+  assert.equal(await worker.evaluate(async () => (await chrome.storage.session.get('braveKey')).braveKey), undefined);
+  assert.equal(await worker.evaluate(async () => (await chrome.storage.session.get('tinyfishKey')).tinyfishKey), undefined);
+  const exaResponses = [];
+  const captureExa = (response) => { if (response.url().startsWith('https://mcp.exa.ai/')) exaResponses.push(response); };
+  panel.on('response', captureExa);
+  report.liveExa = { origin: await panel.evaluate(() => location.origin), query: 'MDN Array map JavaScript reference', result: await send('Search: MDN Array map JavaScript reference') };
+  panel.off('response', captureExa);
+  assert.equal(exaResponses.length, 1);
+  report.liveExa.http = { status: exaResponses[0].status(), request: exaResponses[0].request().postDataJSON(), body: await exaResponses[0].text() };
+  if (report.liveExa.result.includes('shared search limit reached')) {
+    assert.equal(report.liveExa.http.status, 200);
+    assert.match(report.liveExa.http.body, /ai.exa\/rateLimited/);
+    assert.equal(await panel.locator('#search-fallback').isVisible(), true);
+    await panel.screenshot({ path: resolve(artifacts, 'exa-live-limit.png') });
+    report.liveExa.outcome = 'Live shared limit; no live search success in this run. The following protocol fixture is synthetic and does not prove live availability.';
+    // Keep the suite self-contained; do not depend on local diagnostic captures.
+    const fixtureResponse = { jsonrpc: '2.0', id: 1, result: { content: [{ type: 'text', text: 'Title: MDN Array.prototype.map()\nURL: https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Array/map\nPublished: N/A\nHighlights:\nProtocol fixture excerpt about the map callback.' }] } };
+    await panel.route('https://mcp.exa.ai/mcp?tools=web_search_exa', (route) => route.fulfill({ status: 200, contentType: 'text/event-stream', body: `event: message\ndata: ${JSON.stringify(fixtureResponse)}\n\n` }), { times: 1 });
+    report.exaProtocolFixture = await send('Search: MDN Array map JavaScript reference');
+  } else report.liveExa.outcome = 'Live extension search returned parsed Exa results.';
+  const liveSearch = JSON.parse(await panel.locator('article.toolResult pre').last().textContent());
+  assert.equal(liveSearch.provider, 'Exa');
+  const mdn = liveSearch.results.find((item) => item.url === 'https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Array/map');
+  assert.ok(mdn, 'Exa live response or explicitly synthetic protocol fixture must parse the MDN map reference URL');
+  assert.match(mdn.snippet, /map|callback/i);
+  assert.match(await send(`Read source: ${mdn.url}`), /Source not allowed/);
+  await panel.locator('#sources').evaluate((element) => { element.open = true; });
+  await panel.locator('#source-list .source-card').filter({ has: panel.locator(`a[href="${mdn.url}"]`) }).locator('button').evaluate((element) => element.click());
+  await panel.waitForFunction((url) => [...document.querySelectorAll('#source-list .source-card')].some((card) => card.querySelector('a').href === url && card.querySelector('button').disabled), mdn.url);
+  report.liveMdnRead = await send(`Read source: ${mdn.url}`);
+  assert.match(report.liveMdnRead, /Fetched public source text/);
+  assert.match(report.liveMdnRead, /Array\.prototype\.map|map\(\)/);
+  await panel.screenshot({ path: resolve(artifacts, 'exa-sources.png') });
+  await panel.locator('#new-conversation').evaluate((element) => element.click());
+  await panel.waitForFunction(() => !document.getElementById('send').disabled);
+  await panel.locator('#web-conversation').evaluate((element) => element.click());
+  await panel.waitForFunction(() => !document.getElementById('send').disabled);
+  const exaQueries = [];
+  await panel.route('https://mcp.exa.ai/mcp?tools=web_search_exa', async (route) => {
+    const request = route.request().postDataJSON();
+    assert.equal(request.method, 'tools/call');
+    assert.equal(request.params.name, 'web_search_exa');
+    assert.equal(request.params.arguments.numResults, 6);
+    assert.equal(route.request().headers()['x-exa-source'], undefined);
+    assert.equal(route.request().headers()['x-api-key'], undefined);
+    const query = request.params.arguments.query;
+    exaQueries.push(query);
+    const text = query === 'empty' ? 'No results found.' : ['source', 'broken', 'slow'].map((path, i) => `Title: ${['Fee evidence', 'Unavailable source', 'Slow source'][i]}\nURL: ${origin}/${path}\nPublished: ${i ? 'N/A' : '2026-10-30'}\n${i ? 'Text' : 'Highlights'}: Snippet only, not full text.`).join('\n\n---\n\n');
+    const result = query === 'limited' ? { _meta: { 'ai.exa/rateLimited': true }, content: [{ type: 'text', text: 'Do not treat this as empty results.' }] }
+      : query === 'tool-error' ? { isError: true, content: [{ type: 'text', text: 'Fixture tool failure' }] }
+      : { content: [{ type: 'text', text: query === 'changed' ? 'Unknown response format' : text }] };
+    const message = query === 'rpc-error' ? { jsonrpc: '2.0', id: 1, error: { code: -32603, message: 'Fixture RPC failure' } } : { jsonrpc: '2.0', id: 1, result };
+    await route.fulfill({ status: 200, contentType: query === 'json' ? 'application/json' : 'text/event-stream', body: query === 'json' ? JSON.stringify(message) : `: keepalive\r\n\r\nevent: message\r\ndata: ${JSON.stringify(message)}\r\n\r\n` });
+  });
+  assert.match(await send('Search: empty'), /"results":\[\]/);
+  assert.match(await send('Search: rpc-error'), /Fixture RPC failure/);
+  assert.match(await send('Search: tool-error'), /Fixture tool failure/);
+  assert.match(await send('Search: changed'), /unrecognized search content/);
+  assert.match(await send('Search: limited'), /shared search limit reached/);
+  assert.equal(await panel.locator('#search-fallback').isVisible(), true);
+  assert.equal(await panel.locator('#open-search').getAttribute('href'), 'https://duckduckgo.com/?q=limited');
+  // Check the new-tab action without treating a navigation fixture as a live
+  // DuckDuckGo search or giving the model access to that tab.
+  await browser.route('https://duckduckgo.com/?q=limited', (route) => route.fulfill({ contentType: 'text/html', body: '<title>Search navigation fixture</title>' }));
+  const openedSearch = browser.waitForEvent('page');
+  await panel.locator('#open-search').click();
+  const searchTab = await openedSearch;
+  await searchTab.waitForURL('https://duckduckgo.com/?q=limited');
+  assert.match(await panel.locator('#composer-target').textContent(), /No tab attached/);
+  await searchTab.close();
+  await browser.unroute('https://duckduckgo.com/?q=limited');
+  await panel.screenshot({ path: resolve(artifacts, 'exa-fallback.png') });
+  await panel.setViewportSize({ width: 320, height: 640 });
+  report.narrowViewport = await panel.evaluate(() => ({ width: innerWidth, height: innerHeight, scrollWidth: document.documentElement.scrollWidth, scrollHeight: document.documentElement.scrollHeight, elements: [...document.body.children].filter((element) => element.getBoundingClientRect().height).map((element) => ({ id: element.id || element.tagName, top: element.getBoundingClientRect().top, bottom: element.getBoundingClientRect().bottom, height: element.getBoundingClientRect().height, maxHeight: getComputedStyle(element).maxHeight })) }));
+  assert.equal(await panel.evaluate(() => document.documentElement.scrollHeight > innerHeight || document.documentElement.scrollWidth > innerWidth), false, 'Task actions and fallback must leave the composer within the narrow viewport');
+  await panel.screenshot({ path: resolve(artifacts, 'exa-fallback-narrow.png') });
+  await panel.setViewportSize({ width: 380, height: 850 });
+  const jsonResult = await send('Search: json');
+  assert.match(jsonResult, /Search snippets only/);
+  assert.match(jsonResult, /2026-10-30/);
+  assert.doesNotMatch(jsonResult, /"date":"N\/A"/);
+  assert.equal(await panel.locator('#search-fallback').isVisible(), false);
+  assert.equal(await panel.locator('#source-list .source-card').count(), 3);
+  assert.equal(sourceReads, 0);
+  assert.deepEqual(exaQueries, ['empty', 'rpc-error', 'tool-error', 'changed', 'limited', 'json']);
+  report.checks.push('Actual keyless Exa extension-origin attempt, with live outcome and synthetic protocol fixture distinguished; separately approved actual MDN read; Exa SSE/JSON fixtures with Highlights/Text, dates, empty results, HTTP200 rate limit, RPC/tool errors and unknown content; no key or identity header; explicit browser fallback');
+  await panel.locator('#research-settings').evaluate((element) => { element.open = true; });
+  await panel.screenshot({ path: resolve(artifacts, 'exa-settings.png') });
+  await panel.locator('#search-provider').selectOption('tinyfish');
+  await worker.evaluate(() => chrome.storage.session.set({ searchProvider: 'tinyfish' }));
+  assert.match(await send('Search: no key'), /TinyFish is not configured/);
+  await panel.locator('#tinyfish-key').fill('invalid-tinyfish-key');
+  await panel.locator('#save-search').evaluate((element) => element.click());
+  await panel.waitForFunction(() => document.getElementById('search-state').textContent.includes('TinyFish'));
+  assert.equal(await panel.locator('#tinyfish-key').inputValue(), '');
+  assert.equal(await worker.evaluate(async () => (await chrome.storage.local.get('tinyfishKey')).tinyfishKey), undefined);
+  const assertSettingsLayout = async () => {
+    assert.equal(await panel.evaluate(() => {
+      const settings = document.getElementById('research-settings').getBoundingClientRect();
+      const summary = document.querySelector('#research-settings > summary').getBoundingClientRect();
+      const footer = document.querySelector('footer').getBoundingClientRect();
+      return !document.getElementById('sources').open && summary.top >= settings.top && summary.bottom <= settings.bottom && settings.bottom <= footer.top && footer.bottom <= innerHeight + 1 && document.documentElement.scrollWidth <= innerWidth && document.documentElement.scrollHeight <= innerHeight;
+    }), true, 'Expanded settings must scroll within the layout without covering the footer or overflowing the viewport');
+  };
+  await assertSettingsLayout();
+  await panel.screenshot({ path: resolve(artifacts, 'tinyfish-settings.png') });
+  await panel.setViewportSize({ width: 320, height: 640 });
+  await assertSettingsLayout();
+  await panel.screenshot({ path: resolve(artifacts, 'tinyfish-settings-narrow.png') });
+  await panel.setViewportSize({ width: 380, height: 850 });
+  report.tinyfishInvalidKey = await send('Search: Pi Accanto integration test');
+  assert.match(report.tinyfishInvalidKey, /TinyFish returned HTTP|Failed to fetch/);
+  let tinyfishStatus = 200;
+  await panel.route('https://api.search.tinyfish.ai/**', async (route) => {
+    assert.equal(route.request().headers()['x-api-key'], 'invalid-tinyfish-key');
+    assert.equal(new URL(route.request().url()).searchParams.get('query'), 'TinyFish fixture');
+    await route.fulfill({ status: tinyfishStatus, contentType: 'application/json', body: JSON.stringify({ results: [
+      { url: 'javascript:alert(1)' }, { url: 'https://user:secret@example.org/' }, { url: 'not a URL' },
+      { title: 'Fee evidence'.repeat(40), url: `${origin}/source`, snippet: 'TinyFish fixture snippet'.repeat(100), date: '2026-10-30' },
+      { title: 'Duplicate', url: `${origin}/source`, snippet: 'Must not duplicate the source' },
+    ] }) });
+  });
+  assert.match(await send('Search: TinyFish fixture'), /TinyFish fixture snippet/);
+  const normalized = JSON.parse(await panel.locator('article.toolResult pre').last().textContent());
+  assert.deepEqual(normalized.results.map((item) => item.url), [`${origin}/source`]);
+  assert.equal(normalized.results[0].title.length, 300);
+  assert.equal(normalized.results[0].snippet.length, 1600);
+  tinyfishStatus = 429;
+  assert.match(await send('Search: TinyFish fixture'), /HTTP 429/);
+  assert.deepEqual(exaQueries, ['empty', 'rpc-error', 'tool-error', 'changed', 'limited', 'json']);
+  await panel.locator('#disable-search').evaluate((element) => element.click());
+  await panel.waitForFunction(() => document.getElementById('search-provider').value === 'exa');
+  assert.equal(await worker.evaluate(async () => (await chrome.storage.session.get('tinyfishKey')).tinyfishKey), undefined);
+  report.checks.push('TinyFish optional session key: real invalid-key rejection; fixture success and429; no silent Exa fallback; key not in local storage, cleared from input and forgotten explicitly');
+  await panel.locator('#search-provider').selectOption('brave');
+  await worker.evaluate(() => chrome.storage.session.set({ searchProvider: 'brave' }));
+  assert.match(await send('Search: public research query'), /not configured/);
+  await panel.locator('#brave-key').fill('invalid-test-key');
+  await panel.locator('#brave-storage').check();
+  await panel.locator('#save-search').evaluate((element) => element.click());
+  await panel.waitForFunction(() => document.getElementById('search-state').textContent.includes('Key available'));
+  assert.equal(await panel.locator('#brave-key').inputValue(), '');
+  await assertSettingsLayout();
+  await panel.screenshot({ path: resolve(artifacts, 'search-settings.png') });
+  await panel.locator('#research-settings').evaluate((element) => { element.open = false; });
+  // Exercise an actual provider HTTP failure in the extension. No valid key or
+  // paid search is used; a fixture must never be reported as provider success.
+  const providerFailure = await send('Search: Pi Accanto API integration test');
+  assert.match(providerFailure, /Brave Search returned HTTP|Failed to fetch/);
+  report.providerFailure = providerFailure;
+  const queries = [];
+  let providerStatus = 200;
+  await panel.route('https://api.search.brave.com/res/v1/web/search?**', async (route) => {
+    const url = new URL(route.request().url());
+    queries.push(url.searchParams.get('q'));
+    assert.equal(route.request().headers()['x-subscription-token'], 'invalid-test-key');
+    await route.fulfill({ status: providerStatus, contentType: 'application/json', body: JSON.stringify({ type: 'search', web: { results: url.searchParams.get('q') === 'empty' ? [] : [
+      { title: 'Fee evidence', url: `${origin}/source`, description: 'Snippet only, not full text.', page_age: '2026-10-30' },
+      { title: 'Unavailable source', url: `${origin}/broken`, description: 'May fail.' },
+      { title: 'Slow source', url: `${origin}/slow`, description: 'Cancellation fixture.' },
+    ] } }) });
+  });
+  assert.match(await send('Search: empty'), /"results":\[\]/);
+  providerStatus = 429;
+  assert.match(await send('Search: limited'), /HTTP 429/);
+  providerStatus = 200;
+  assert.match(await send('Search: deliberate public query'), /Search snippets only/);
+  assert.equal(queries.at(-1), 'deliberate public query');
+  assert.equal(sourceReads, 0);
+  assert.match(await send(`Read source: ${origin}/source`), /Source not allowed/);
+  assert.equal(sourceReads, 0);
+  await panel.locator('#sources').evaluate((element) => { element.open = true; });
+  for (const button of await panel.locator('#source-list button').all()) await button.evaluate((element) => element.click());
+  await panel.waitForFunction(() => [...document.querySelectorAll('#source-list button')].every((button) => button.disabled));
+  await panel.screenshot({ path: resolve(artifacts, 'sources.png') });
+  const read = await send(`Read source: ${origin}/source`);
+  assert.match(read, /Clause 19/);
+  assert.match(read, /Fetched public source text/);
+  assert.doesNotMatch(read, /never-read|private-field-value/);
+  assert.equal(sourceReads, 1);
+  const partial = await send(`Code: const results = await Promise.allSettled([tools.read_web_source({url:${JSON.stringify(`${origin}/source`)}}), tools.read_web_source({url:${JSON.stringify(`${origin}/broken`)}})]); text(results.map(r => r.status === 'fulfilled' ? {status:r.status, url:JSON.parse(r.value).url} : {status:r.status, error:String(r.reason)}));`);
+  assert.match(partial, /fulfilled/);
+  assert.match(partial, /rejected/);
+  assert.match(partial, /HTTP 503/);
+  await panel.locator('#sources').evaluate((element) => { element.open = false; });
+  await panel.locator('article.toolResult details').last().evaluate((element) => { element.open = true; });
+  await panel.locator('article.toolResult').last().evaluate((element) => { document.getElementById('transcript').scrollTop += element.getBoundingClientRect().top - document.getElementById('transcript').getBoundingClientRect().top - 12; });
+  await panel.screenshot({ path: resolve(artifacts, 'partial-failure.png') });
+  await panel.locator('#prompt').fill(`Code: await tools.read_web_source({url:${JSON.stringify(`${origin}/slow`)}});`);
+  await panel.locator('#send').evaluate((element) => element.click());
+  await panel.waitForFunction(() => [...document.querySelectorAll('.nested-activity')].some((element) => element.textContent.includes('running')));
+  await panel.locator('#stop').evaluate((element) => element.click());
+  await panel.waitForFunction(() => !document.getElementById('send').disabled);
+  assert.match(await send('Code: text(19*7);'), /133/);
+  await panel.locator('#prompt').fill(`Code: await tools.read_web_source({url:${JSON.stringify(`${origin}/slow`)}});`);
+  await panel.locator('#send').evaluate((element) => element.click());
+  await panel.waitForFunction(() => [...document.querySelectorAll('.nested-activity')].some((element) => element.textContent.includes('running')));
+  const nextPanel = await browser.newPage();
+  await nextPanel.goto(panel.url());
+  await nextPanel.locator('#panel-owner').waitFor({ state: 'visible' });
+  await nextPanel.locator('#continue-here').click();
+  await nextPanel.waitForFunction(() => document.getElementById('status').textContent.includes('Ready'));
+  assert.equal(await panel.locator('#send').isDisabled(), true, 'The old owner cannot submit after its pending read is stopped');
+  assert.equal(await nextPanel.locator('#sources').isVisible(), false, 'Handoff does not restore source approvals');
+  await nextPanel.close();
+  await panel.locator('#continue-here').evaluate((element) => element.click());
+  await panel.waitForFunction(() => document.getElementById('status').textContent.includes('Ready'));
+  assert.equal(await panel.locator('#sources').isVisible(), false);
+  assert.match(await send(`Read source: ${origin}/source`), /Source not allowed/);
+  report.checks.push('Web-only context; missing key; real provider rejection; fixture search normalization, empty results and 429; per-URL approval; bounded source extraction; multi-call partial failure; Stop pending read and recovery; approvals reset on reload');
+  // Real model chooses tools and writes its own script. This checks the local
+  // model integration without claiming a live Brave search succeeded.
+  const config = JSON.parse(await readFile(resolve(homedir(), '.pi/agent/models.json'), 'utf8'));
+  // This disposable extension's ID is not on the local model server's Origin
+  // allowlist. Relay only this test's model requests through Node; the real
+  // model still chooses tools and generates the scripts. Native sidebar tests
+  // use the canonical extension ID and exercise direct transport separately.
+  await panel.route('http://192.168.1.111:11236/v1/chat/completions', async (route) => {
+    report.modelRequests.push(route.request().postDataJSON());
+    const response = await fetch(route.request().url(), { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${config.providers['local-gguf'].apiKey}` }, body: route.request().postData() });
+    const body = Buffer.from(await response.arrayBuffer());
+    report.modelResponses.push({ status: response.status, body: body.toString('utf8') });
+    await writeFile(resolve(artifacts, 'report.json'), JSON.stringify(report, null, 2));
+    await route.fulfill({ status: response.status, contentType: response.headers.get('content-type'), body });
+  });
+  await worker.evaluate(async (key) => { await chrome.storage.session.set({ apiKey: key }); await chrome.storage.local.set({ mode: 'live' }); }, config.providers['local-gguf'].apiKey);
+  await panel.reload();
+  await panel.waitForFunction(() => document.getElementById('status').textContent.includes('Ready'));
+  await fixture.bringToFront();
+  await panel.locator('#new-conversation').evaluate((element) => element.click());
+  await panel.waitForFunction(() => !document.getElementById('send').disabled);
+  const implicitQuestion = async (prompt, expected) => {
+    const before = report.modelRequests.length;
+    await panel.locator('#prompt').fill(prompt);
+    await panel.locator('#send').evaluate((element) => element.click());
+    await panel.waitForFunction(() => !document.getElementById('send').disabled, null, { timeout: 150000 });
+    const request = report.modelRequests[before];
+    assert.ok(request, 'The question must reach the model');
+    const input = request.messages.findLast((message) => message.role === 'user');
+    const sent = JSON.stringify(input.content);
+    assert.match(sent, /Attached page context captured/);
+    assert.ok(sent.includes(origin));
+    assert.ok(sent.includes(expected));
+    assert.doesNotMatch(sent, /private-field-value|never-read|hidden-clause/);
+    assert.match(await panel.locator('article.assistant .message-body').last().textContent(), new RegExp(expected.replace('.', '\\.')));
+    assert.equal(await panel.locator('article.user pre').last().textContent(), prompt, 'The transcript shows the question without a raw context dump');
+  };
+  await implicitQuestion('What is the unit price?', '27.50');
+  await fixture.locator('p').first().evaluate((element) => { element.textContent = 'Line items: 3 at 31.40; delivery 8.25.'; });
+  await implicitQuestion('What is the unit price now?', '31.40');
+  await panel.screenshot({ path: resolve(artifacts, 'implicit-page-context.png') });
+  await fixture.locator('p').first().evaluate((element) => { element.textContent = 'Line items: 3 at 27.50; delivery 8.25.'; });
+  await panel.locator('#new-conversation').evaluate((element) => element.click());
+  await panel.waitForFunction(() => !document.getElementById('send').disabled);
+  await panel.locator('#prompt').fill('Use search_page to find the cancellation fee beyond the introduction. Then use codemode to call inspect_tab and calculate 3 items times their unit price plus delivery from its text. Cite the page URL and fee clause. Use the tools, not mental arithmetic.');
+  await panel.locator('#send').evaluate((element) => element.click());
+  await panel.waitForFunction(() => !document.getElementById('send').disabled, null, { timeout: 150000 });
+  const live = await panel.locator('#transcript').textContent();
+  assert.match(live, /Search this page/);
+  assert.match(live, /Code Mode/);
+  assert.match(await panel.locator('article.assistant .message-body').last().textContent(), /90\.75/);
+  assert.match(live, /47\.20/);
+  report.liveModel = live;
+  report.liveTransport = 'Actual local model via test-only Node relay because the disposable extension ID is outside its Origin allowlist.';
+  await panel.screenshot({ path: resolve(artifacts, 'live-model.png') });
+  await fixture.goto(`${origin}/code-mode-invoice.html`);
+  await fixture.locator('#change-invoice').click();
+  await panel.locator('#new-conversation').evaluate((element) => element.click());
+  await panel.waitForFunction(() => !document.getElementById('send').disabled);
+  await panel.locator('#prompt').fill('Use Code Mode to read the invoice\'s actual quantity, unit price and delivery, calculate the total, and cite the page URL. Show the inputs and your working.');
+  await panel.locator('#send').evaluate((element) => element.click());
+  await panel.waitForFunction(() => !document.getElementById('send').disabled, null, { timeout: 150000 });
+  assert.match(await panel.locator('article.toolResult').last().textContent(), /84\.55/);
+  assert.match(await panel.locator('article.assistant .message-body').last().textContent(), /84\.55/);
+  assert.ok((await panel.locator('article.assistant .message-body').last().textContent()).includes('/code-mode-invoice.html'));
+  report.invoiceDemoAnswer = await panel.locator('#transcript').textContent();
+  await panel.screenshot({ path: resolve(artifacts, 'code-mode-demo-answer.png') });
+  await panel.locator('#new-conversation').evaluate((element) => element.click());
+  await panel.waitForFunction(() => !document.getElementById('send').disabled);
+  await panel.locator('#web-conversation').evaluate((element) => element.click());
+  await panel.waitForFunction(() => !document.getElementById('send').disabled);
+  await panel.locator('#research-settings').evaluate((element) => { element.open = true; });
+  await panel.locator('#search-provider').selectOption('exa');
+  await panel.locator('#save-search').evaluate((element) => element.click());
+  await panel.waitForFunction(() => document.getElementById('search-state').textContent.includes('Exa'));
+  await panel.locator('#research-settings').evaluate((element) => { element.open = false; });
+  await panel.screenshot({ path: resolve(artifacts, 'web-ready.png') });
+  const askModel = async (prompt) => {
+    await panel.locator('#prompt').fill(prompt);
+    await panel.locator('#send').evaluate((element) => element.click());
+    await panel.waitForFunction(() => !document.getElementById('send').disabled, null, { timeout: 150000 });
+    return panel.locator('article.assistant .message-body').last().textContent();
+  };
+  const queriesBeforeWebTask = exaQueries.length;
+  report.webSearchAnswer = await askModel('Search the web for "Research Fixture cancellation fee policy". Cite the result URLs and say whether you have read the full sources.');
+  report.webSearchQueries = exaQueries.slice(queriesBeforeWebTask);
+  report.webSearchTranscript = await panel.locator('#transcript').textContent();
+  const webInput = JSON.stringify(report.modelRequests.findLast((request) => request.messages.some((message) => message.role === 'user' && JSON.stringify(message.content).includes('Research Fixture cancellation fee policy'))).messages);
+  assert.doesNotMatch(webInput, /Attached page context captured|Line items:|31\.40/, 'Web research must not include the previously attached page');
+  assert.ok(exaQueries.length > queriesBeforeWebTask, 'Real model must invoke the search tool in this task');
+  assert.equal(await panel.locator('#source-list .source-card').count(), 3);
+  await panel.locator('#sources').evaluate((element) => { element.open = true; });
+  await panel.locator('#source-list button').first().evaluate((element) => element.click());
+  await panel.waitForFunction(() => document.querySelector('#source-list button').disabled);
+  await panel.locator('#sources').evaluate((element) => { element.open = false; });
+  const sourcedAnswer = await askModel(`I allowed the Fee evidence source. Use read_web_source to read ${origin}/source and tell me the actual clause and amount. Cite its URL. Do not search again.`);
+  assert.match(sourcedAnswer, /47\.20/);
+  assert.ok(sourcedAnswer.includes(`${origin}/source`));
+  report.liveWebFixture = sourcedAnswer;
+  await panel.screenshot({ path: resolve(artifacts, 'live-sourced-answer.png') });
+  assert.deepEqual(errors, []);
+  assert.equal(await panel.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+  await writeFile(resolve(artifacts, 'report.json'), JSON.stringify(report, null, 2));
+  console.log('Research checks passed. Evidence:', artifacts);
+} catch (error) {
+  report.failure = { message: error.message, stack: error.stack };
+  if (panel && !panel.isClosed()) {
+    report.failureTranscript = await panel.locator('#transcript').textContent().catch(() => null);
+    report.failureStatus = await panel.locator('#status').textContent().catch(() => null);
+    await panel.screenshot({ path: resolve(artifacts, 'failure.png') }).catch(() => undefined);
+  }
+  throw error;
+} finally {
+  await writeFile(resolve(artifacts, 'report.json'), JSON.stringify(report, null, 2));
+  await browser?.close();
+  await new Promise((done) => server.close(done));
+  await rm(profile, { recursive: true, force: true });
+}
