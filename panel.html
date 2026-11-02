@@ -26,12 +26,14 @@
   </header>
   <section class="tab-context" aria-label="Tab context">
     <span class="page-icon" aria-hidden="true"><svg viewBox="0 0 20 20"><rect x="3" y="4" width="14" height="12" rx="2"/><path d="M3 8h14"/></svg></span>
-    <div><p id="target">Current tab</p><p id="target-hint" class="context-hint">Attaches on first send</p></div>
+    <div><p id="target">Current tab</p><p id="target-hint" class="context-hint">Send a message to start</p></div>
+    <button type="button" id="new-conversation" disabled title="Clear this conversation and start fresh">New chat</button>
   </section>
-  <nav class="conversation-actions" aria-label="Conversation actions">
-    <button type="button" id="use-current-tab" disabled>Use current tab</button>
-    <button type="button" id="new-conversation" disabled>New conversation</button>
-  </nav>
+  <section id="tab-switch" class="tab-switch" aria-label="Change conversation page" hidden>
+    <p id="current-tab-label"></p>
+    <p class="context-hint">Start a new task here. Earlier messages stay visible.</p>
+    <button type="button" id="use-current-tab" disabled>Chat about this tab</button>
+  </section>
   <main id="transcript" aria-label="Conversation" aria-live="polite"></main>
   <template id="empty-state">
     <section class="empty-state">
@@ -46,10 +48,10 @@
   <footer>
     <p id="status" role="status">Opening Pi Durable…</p>
     <form id="composer">
-      <label for="prompt" id="composer-target">First send attaches to the current tab</label>
+      <label for="prompt" id="composer-target">Ask about this page</label>
       <div class="compose-box">
         <textarea id="prompt" rows="2" placeholder="What would you like to do?" required aria-describedby="help"></textarea>
-        <div class="compose-actions"><span class="scope">Follow-ups stay attached</span><div class="buttons"><button id="send" disabled>Send</button><button type="button" id="stop" disabled>Stop</button></div></div>
+        <div class="compose-actions"><div class="buttons"><button id="send" disabled>Send</button><button type="button" id="stop" disabled>Stop</button></div></div>
       </div>
     </form>
     <div class="composer-notes"><p id="help">Page content goes to your chosen model.</p><span class="shortcut">Ctrl / ⌘ + Enter</span></div>

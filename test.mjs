@@ -41,6 +41,8 @@ try {
   await panel.emulateMedia({ colorScheme: 'dark', reducedMotion: 'reduce' });
   await panel.waitForFunction(() => document.getElementById('status')?.textContent.includes('Ready'));
   assert.equal(await panel.locator('html').evaluate((element) => getComputedStyle(element).colorScheme), 'light');
+  assert.equal(await panel.locator('#prompt').evaluate(element => getComputedStyle(element).fontSize), '16px', 'Chrome extension defaults must not shrink composer text');
+  assert.equal(await panel.locator('#tab-switch').isVisible(), false, 'Starting a chat needs no tab-switch decision');
   await panel.getByRole('button', { name: 'Summarize this page' }).evaluate((button) => button.click());
   assert.equal(await panel.locator('#prompt').inputValue(), 'Summarize this page in a few sentences.');
   await panel.screenshot({ path: resolve(artifacts, 'ready.png') });
@@ -48,6 +50,16 @@ try {
   await panel.waitForFunction(() => document.getElementById('status')?.textContent.includes('Check complete'));
   assert.equal(await panel.locator('#prompt').inputValue(), '');
   assert.equal(await panel.locator('article.assistant .message-body strong').last().innerText(), 'Scripted compatibility check finished.');
+  assert.equal(await panel.locator('article.assistant .message-body').last().evaluate(element => getComputedStyle(element).fontSize), '16px');
+  await browser.grantPermissions(['clipboard-read', 'clipboard-write']);
+  await panel.bringToFront();
+  await panel.getByRole('button', { name: 'Copy response', exact: true }).last().click();
+  await panel.getByRole('button', { name: 'Response copied', exact: true }).waitFor();
+  await panel.waitForFunction(async (expected) => await navigator.clipboard.readText() === expected,
+    '**Scripted compatibility check finished.** See the browser result above. No language model was called.');
+  await fixture.bringToFront();
+  await panel.waitForFunction(() => document.getElementById('tab-switch').hidden);
+  await panel.screenshot({ path: resolve(artifacts, 'ux-copy.png') });
   const readResult = panel.locator('article.toolResult details').first();
   assert.equal(await readResult.evaluate((details) => details.open), false);
   await readResult.locator('summary').evaluate((summary) => summary.click());
@@ -92,6 +104,10 @@ try {
   await other.locator('#draft').fill('Other draft');
   await fixture.locator('#draft').focus();
   await other.bringToFront();
+  await panel.waitForFunction(() => !document.getElementById('tab-switch').hidden);
+  assert.match(await panel.locator('#current-tab-label').textContent(), /Other task/);
+  assert.equal(await panel.locator('#target').textContent(), 'Disposable draft');
+  await panel.screenshot({ path: resolve(artifacts, 'ux-different-tab.png') });
   await send('Inspect the same attached tab again');
   assert.match(await panel.locator('article.toolResult').last().textContent(), /NZ-427/);
   assert.equal(await panel.locator('#target').textContent(), 'Disposable draft');
@@ -114,10 +130,10 @@ try {
   await panel.waitForFunction(() => document.getElementById('status')?.textContent.includes('Ready'));
   assert.match(await panel.locator('#transcript').textContent(), /NZ-427/);
   assert.match(await panel.locator('#transcript').textContent(), /YY-880/);
-  // Choosing the already attached tab keeps the current sequence intact.
+  // There is no redundant switch action on the already attached tab.
   const count = await panel.locator('article.user').count();
-  await panel.locator('#use-current-tab').evaluate((button) => button.click());
-  await panel.waitForFunction(() => !document.getElementById('use-current-tab').disabled);
+  await other.bringToFront();
+  await panel.waitForFunction(() => document.getElementById('tab-switch').hidden);
   assert.equal(await panel.locator('article.user').count(), count);
   await other.close();
   await fixture.bringToFront();
@@ -126,10 +142,19 @@ try {
   assert.equal(await fixture.locator('#draft').inputValue(), 'Follow-up on original tab');
   assert.equal(await panel.locator('article.user').count(), count);
   await panel.screenshot({ path: resolve(artifacts, 'attachment-unavailable.png') });
+  const internal = await browser.newPage();
+  await internal.goto('chrome://version');
+  await internal.bringToFront();
   await panel.locator('#new-conversation').evaluate((button) => button.click());
   await panel.waitForFunction(() => document.getElementById('status').textContent.includes('New conversation'));
   assert.equal(await panel.locator('article').count(), 0);
-  assert.equal(await panel.locator('#target').textContent(), 'Disposable draft');
+  assert.equal(await panel.locator('#tab-switch').isVisible(), false);
+  await panel.reload();
+  await panel.waitForFunction(() => document.getElementById('status')?.textContent.includes('Ready'));
+  assert.equal(await panel.locator('article').count(), 0, 'A detached new chat survives reload without restoring the old task');
+  await internal.close();
+  await fixture.bringToFront();
+  await panel.waitForFunction(() => document.getElementById('target').textContent === 'Disposable draft');
   await panel.screenshot({ path: resolve(artifacts, 'attachment-new.png') });
   await send('Fresh task after New conversation');
   assert.match(await panel.locator('#transcript').textContent(), /NZ-427/);
@@ -149,7 +174,7 @@ try {
   await reopened.locator('#send').click();
   await reopened.waitForFunction(() => !document.getElementById('send').disabled);
   assert.match(await reopened.locator('#status').textContent(), /attached tab is unavailable/);
-  console.log('PASS: existing browser controls; stable attachment for read/edit while browsing, reload, explicit change with visible history, same-target continuity, closed-target rejection, New conversation, browser-restart invalidation and persistence');
+  console.log('PASS: browser controls, exact Markdown clipboard copy, contextual tab switching, permission-independent New chat, attachment/context boundaries, PDF-independent reload and browser restart persistence');
 } finally {
   await browser?.close();
   await new Promise((done) => server.close(done));

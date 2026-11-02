@@ -7,6 +7,55 @@ An extension-only Pi Durable 1.4.0 prototype for Chrome/Edge. No native host,
 BrowserMCP, separate Pi process, or WASM is needed. Node is used only to build
 and test the extension, not at runtime.
 
+## What you can do today
+
+Ask about the tab you already have open, keep a sequence of follow-up questions
+attached to it, and prepare text without leaving the page.
+
+| Task | Example prompt | Current behavior |
+| --- | --- | --- |
+| Understand a page | “Summarize this page and explain the delivery charges.” | Reads the first 4,000 characters of HTML body text; content later on the page may be omitted. |
+| Check an invoice | “Calculate the total including delivery and show your working.” | The model reasons from inspected text; there is no calculator or code-execution tool yet. |
+| Read a PDF | “What is the total, and which pages support it?” | Extracts text with physical page references from direct online or local PDFs, within the limits below. |
+| Prepare a message | “Replace the focused field with a polite reply confirming this amount.” | Replaces an ordinary text input or textarea and reads back the result; it never clicks Submit. |
+| Continue a task while browsing | “Check that amount again against the invoice.” | Keeps using the attached tab even when another tab is active. |
+| Change tasks explicitly | Choose **Chat about this tab** when browsing another page, or **New chat**. | Switching pages keeps earlier messages visible with fresh model context. New chat clears the visible conversation and attaches on the next send. |
+
+The current tool set is **`inspect_tab`** and **`type_in_focused_field`**.
+There is no web search, dedicated page search, Code Mode, screenshot/vision,
+OCR, general clicking, or autonomous navigation. Chrome's native PDF viewer
+is supported through text extraction; arbitrary rich-text editors are not.
+Chrome has been tested; Edge compatibility is not yet verified.
+
+## Where we want to take it
+
+The first milestone is **web search and Code Mode**, followed by page search,
+evidence highlights, and structured extraction.
+These are planned capabilities, not features in the current build:
+
+- **Explain a selection:** start from highlighted text and its surrounding context.
+- **Show the evidence:** search beyond the initial page excerpt, jump to a relevant
+  HTML passage, and add a removable highlight.
+- **Make tables useful:** extract structured rows, verify totals in a sandbox,
+  and offer CSV downloads.
+- **Search the web:** retrieve sourced results through a search-provider API,
+  separately from searching the attached page.
+- **Code Mode:** let the model write bounded programs to transform data and
+  compose approved tools through an explicit sandbox capability bridge.
+- **Compare and prepare:** explore explicitly attached multi-tab comparisons,
+  local snapshot diffs, previewed form filling, and reversible page annotations.
+- **Repeat useful tasks:** explore saved recipes that can pause for missing
+  information, without promising background execution after the sidebar closes.
+
+For example: “Where does this contract say I pay that fee?”, “Turn this pricing
+table into a CSV and check its totals”, or “Compare this invoice with the quote
+I attached.” Search, highlighting, export, and multi-source workflows still need
+implementation. Code Mode / QuickJS WASM is not bundled automatically by using
+Pi Durable.
+
+Track the proposed tools, examples, and acceptance criteria in
+[the capability roadmap (#1)](https://github.com/lsj5031/pi-accanto/issues/1).
+
 ## Screenshots
 
 Read and calculate from an existing tab with the real model in Chrome's sidebar.
@@ -16,6 +65,17 @@ Read and calculate from an existing tab with the real model in Chrome's sidebar.
 Replace a focused text field, verify the result, and leave the form unsubmitted.
 
 ![Pi Accanto updating the focused customer message and confirming the edit without submitting](docs/screenshots/conversation-edit.png)
+
+Completed answers include **Copy**, with confirmation after copying the original
+Markdown. The following capture uses the real model in Chrome’s sidebar.
+
+![Pi Accanto confirming that the invoice answer was copied](docs/screenshots/conversation-copy.png)
+
+When you browse another tab, a contextual suggestion offers **Chat about this tab**.
+The composer continues naming the original page until you explicitly switch.
+This narrow-layout capture uses the offline scripted provider.
+
+![Pi Accanto offering a new task on another tab while keeping the invoice attached](docs/screenshots/conversation-switch.png)
 
 ## Try it
 
@@ -31,10 +91,13 @@ Alt+Shift+P if available). The explicit action handler grants temporary access
 to that tab and opens the sidebar. Your first send attaches the conversation
 to that tab. Follow-ups keep using it even when you browse other tabs; the
 composer names the attachment. To change tasks, invoke the toolbar action on
-the new tab, then choose **Use current tab**. This keeps earlier tasks visible
-but starts fresh model context. Choosing the same attached tab keeps the current
-sequence. **New conversation** clears the visible conversation and model context
-and attaches to the current tab (older history stays in local storage).
+the new tab, then choose **Chat about this tab** in the contextual suggestion.
+This keeps earlier tasks visible but starts fresh model context. The suggestion
+disappears when you return to the conversation's page, so normal follow-ups need
+no tab decision. An unavailable attachment offers **Use this page** instead.
+**New chat** clears the visible conversation and model context immediately,
+without requiring access to the current tab. Your next send attaches to the
+page you are viewing then (older history stays in local storage).
 
 Attachment survives panel reloads. A closed tab, lost permission, navigation
 to another origin, or browser restart makes it unavailable; Pi never switches
@@ -51,16 +114,20 @@ Editing emits input/change events but never clicks Submit. Websites can react
 to those events, so use a disposable page.
 
 The Conversation UI defaults to light, including on a dark system theme.
+Replies and the composer use 16px text, explicitly overriding Chrome’s smaller
+extension-body default; labels use 14px and supporting text uses 13px.
 Open the model control in the header for connection settings. Tool calls and
 results are expandable; assistant replies render sanitized Markdown without
-embedded images. Ctrl+Enter (or Cmd+Enter) sends; Enter inserts a new line.
+embedded images. Completed replies have a **Copy** button that copies the original
+response Markdown, with success or failure feedback. Ctrl+Enter (or Cmd+Enter)
+sends; Enter inserts a new line.
 Scrolling up pauses automatic following while new text arrives. Stop replaces
 Send during a run, and completed instructions clear without erasing a new draft.
 
 ## Reading PDFs
 
 Open a text-based PDF directly in Chrome, invoke Pi Accanto’s toolbar action,
-and send your question (or choose **Use current tab** when changing tasks).
+and send your question (or choose **Chat about this tab** when changing tasks).
 The extension detects Chrome’s PDF document type, including online URLs without
 a `.pdf` suffix, fetches the original document with existing browser credentials,
 and extracts text with bundled PDF.js 6.5.438 and a bundled worker. It does not
@@ -164,8 +231,10 @@ npm run test:pdf
 `npm test` loads the bundled MV3 extension in an isolated Chromium profile with
 the scripted provider. It checks browser tool execution, password exclusion,
 exclusive ownership, attached-tab read/edit follow-ups while browsing elsewhere,
-explicit target changes, New conversation, unavailable targets, reload, and
-browser-restart persistence/invalidation. It renders an
+explicit target changes, permission-independent **New chat** and its detached
+reload state, exact Markdown copying, unavailable targets, reload, and
+browser-restart persistence/invalidation. It also checks the actual 16px composer
+and response sizes. It renders an
 extension tab at sidebar width and grants the test copy loopback access.
 
 `npm run test:pdf` uses isolated headless Chrome for Testing 156 profiles and
@@ -185,7 +254,8 @@ exclusion, Stop/recovery, and reload with the real model. It also runs the
 scripted browser-tool controls independently. Multi-tab cases check follow-up
 recall and fresh inspection of the original tab, enforcement of the toolbar grant
 for a new tab, exclusion of prior tasks from actual model requests, fresh context
-after New conversation, and rejection of closed targets before model invocation.
+after **New chat**, and rejection of closed targets before model invocation.
+The native sidebar also checks copying a real-model answer to the system clipboard.
 PDF cases use the real built-in viewer and toolbar grant, ask the live model
 to combine facts across three pages, verify online and local-file answers,
 preserve the PDF attachment while another tab is active, and check honest

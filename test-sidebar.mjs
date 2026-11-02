@@ -108,6 +108,13 @@ try {
   native('screenshot', '-Path', resolve(artifacts, 'conversation-chrome-read.png'));
   await panel.screenshot({ path: resolve(artifacts, 'conversation-read.png') });
   if (report.liveReadPassed) {
+    await panel.getByRole('button', { name: 'Copy response', exact: true }).last().click();
+    await panel.getByRole('button', { name: 'Response copied', exact: true }).waitFor();
+    const copied = execFileSync('powershell.exe', ['-NoProfile', '-Command', 'Get-Clipboard -Raw'], { encoding: 'utf8', windowsHide: true });
+    assert.match(copied, /NZ-427/);
+    assert.match(copied, /90\.75/);
+    report.clipboardCopyPassed = true;
+    await panel.screenshot({ path: resolve(artifacts, 'ux-native-copy.png') });
     const readDetails = panel.locator('article.toolResult details').first();
     await readDetails.locator('summary').click();
     await panel.screenshot({ path: resolve(artifacts, 'conversation-details.png') });

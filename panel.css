@@ -9,7 +9,7 @@
   --ease-out: cubic-bezier(.23, 1, .32, 1);
 }
 * { box-sizing: border-box; }
-body { margin: 0; height: 100dvh; display: flex; flex-direction: column; }
+body { margin: 0; height: 100dvh; display: flex; flex-direction: column; font: inherit; }
 h1, h2, p { margin: 0; }
 button, input, select, textarea { font: inherit; color: inherit; }
 button, summary { -webkit-tap-highlight-color: transparent; }
@@ -38,11 +38,13 @@ input, select { width: 100%; padding: 9px 10px; border: 1px solid #c9d3c7; borde
 .tab-context { display: flex; align-items: center; gap: 10px; margin: 0 20px; padding: 12px 0 16px; border-bottom: 1px solid var(--line); flex-shrink: 0; }
 .page-icon { display: grid; place-items: center; width: 28px; height: 32px; border-radius: 6px; color: #647660; background: #f0f3ed; flex-shrink: 0; }
 .page-icon svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.5; }
-.tab-context > div { min-width: 0; }
+.tab-context > div { min-width: 0; flex: 1; }
 #target { font-size: 14px; font-weight: 500; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .context-hint { color: var(--muted); font-size: 13px; }
-.conversation-actions { display: flex; flex-wrap: wrap; gap: 4px 8px; padding: 6px 20px 0; flex-shrink: 0; }
-.conversation-actions button { background: transparent; color: var(--accent); padding: 6px 8px; font-size: 14px; }
+#new-conversation, .copy-response { background: transparent; color: var(--muted); padding: 6px 8px; flex-shrink: 0; }
+.tab-switch { margin: 12px 20px 0; padding: 12px; background: #f3f6f0; border: 1px solid var(--line); border-radius: 8px; flex-shrink: 0; }
+#current-tab-label { font-size: 14px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tab-switch button { margin-top: 8px; padding: 6px 10px; }
 #composer-target { overflow-wrap: anywhere; }
 .task-boundary { padding: 12px 0; margin: 24px 0; border-top: 1px solid var(--line); color: var(--muted); font-size: 14px; }
 main { flex: 1; padding: 24px 20px; min-height: 0; overflow-y: auto; overflow-wrap: anywhere; scrollbar-gutter: stable; }
@@ -73,6 +75,9 @@ article.user > pre { padding: 12px 16px; background: #f1f4ee; border-radius: 12p
 .message-body table { border-collapse: collapse; font-size: 14px; }
 .message-body :is(th, td) { border: 1px solid var(--line); padding: 6px 8px; text-align: left; }
 .message-body hr { border: 0; border-top: 1px solid var(--line); margin: 16px 0; }
+.message-actions { margin-top: 8px; }
+.copy-response { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; }
+.copy-response svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.5; }
 article.activity { margin-bottom: 12px; }
 .activity summary { color: #607363; font-size: 14px; padding: 4px 0; }
 .activity pre { margin-top: 8px; padding: 12px; font: 14px/1.6 ui-monospace, SFMono-Regular, Consolas, monospace; background: #f5f7f2; border: 1px solid #e7ebe3; border-radius: 8px; max-height: 240px; overflow: auto; }
@@ -85,8 +90,7 @@ label { display: block; font-size: 14px; color: #5d6b60; margin-bottom: 8px; }
 .compose-box:focus-within { outline: 2px solid #38816b; outline-offset: 2px; }
 textarea { display: block; width: 100%; min-height: 48px; max-height: min(160px, 25dvh); padding: 0; border: 0; outline: 0; background: transparent; resize: vertical; line-height: 24px; }
 textarea::placeholder { color: #74816f; }
-.compose-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px; margin-top: 12px; }
-.scope { font-size: 13px; color: var(--muted); }
+.compose-actions { display: flex; justify-content: flex-end; margin-top: 12px; }
 .buttons { display: flex; }
 .buttons button { min-width: 72px; }
 #stop { display: none; color: #654c3f; background: #f2eee8; }
@@ -97,13 +101,14 @@ body[data-busy="true"] #send { display: none; }
 @media (hover: hover) and (pointer: fine) {
   button:not(:disabled):hover { background: #1e5743; }
   .suggestions button:hover { background: #f4f6f0; }
-  .conversation-actions button:not(:disabled):hover { background: #f0f3ed; }
+  #new-conversation:not(:disabled):hover, .copy-response:not(:disabled):hover { background: #f0f3ed; color: var(--accent); }
   #stop:not(:disabled):hover { background: #e9e2d9; }
   #connection > summary:hover { color: #243f2d; }
 }
 @media (max-height: 600px) {
   .product-header { padding-top: 10px; }
   .tab-context { padding-top: 6px; padding-bottom: 10px; }
+  .tab-switch { margin-top: 8px; padding: 8px 10px; }
   main { padding-top: 16px; }
   footer { padding-top: 8px; padding-bottom: 10px; }
   #status { margin-bottom: 8px; }

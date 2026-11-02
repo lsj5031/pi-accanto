@@ -15,6 +15,7 @@ let root;
 let harness;
 let attachment;
 let browserSession;
+let attachmentRefresh = 0;
 const history = new Map();
 let busy = false;
 let releaseLock;
@@ -53,6 +54,7 @@ function render(view) {
   const following = transcript.scrollHeight - scrollTop - transcript.clientHeight < 40;
   const expanded = new Set([...transcript.querySelectorAll('details[open]')].map((details) => details.dataset.message));
   const focusedMessage = document.activeElement.closest('details[data-message]')?.dataset.message;
+  const focusedCopy = document.activeElement.dataset.copyMessage;
   transcript.replaceChildren();
   for (const entry of entries.slice(Math.max(0, fresh))) {
     if (entry.kind === 'accanto.target') {
@@ -88,6 +90,29 @@ function render(view) {
         article.append(details);
       } else {
         article.append(role, body);
+        if (message.role === 'assistant' && !message.errorMessage) {
+          const actions = document.createElement('div');
+          actions.className = 'message-actions';
+          const copy = document.createElement('button');
+          copy.type = 'button';
+          copy.className = 'copy-response';
+          copy.dataset.copyMessage = `${entry.id}:${messageIndex}`;
+          copy.setAttribute('aria-label', 'Copy response');
+          copy.setAttribute('aria-live', 'polite');
+          copy.innerHTML = '<svg aria-hidden="true" viewBox="0 0 20 20"><rect x="7" y="7" width="10" height="10" rx="2"/><path d="M12 7V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v5a2 2 0 0 0 2 2h2"/></svg><span>Copy</span>';
+          copy.addEventListener('click', async () => {
+            try {
+              await navigator.clipboard.writeText(text);
+              copy.querySelector('span').textContent = 'Copied';
+              copy.setAttribute('aria-label', 'Response copied');
+            } catch {
+              copy.querySelector('span').textContent = 'Copy failed · Try again';
+              copy.setAttribute('aria-label', 'Copy failed. Try copying response again');
+            }
+          });
+          actions.append(copy);
+          article.append(actions);
+        }
       }
       transcript.append(article);
     }
@@ -106,11 +131,12 @@ function render(view) {
   if (!transcript.hasChildNodes()) transcript.append($('empty-state').content.cloneNode(true));
   transcript.scrollTop = following ? transcript.scrollHeight : scrollTop;
   if (focusedMessage) transcript.querySelector(`details[data-message="${focusedMessage}"] > summary`)?.focus({ preventScroll: true });
+  if (focusedCopy) transcript.querySelector(`button[data-copy-message="${focusedCopy}"]`)?.focus({ preventScroll: true });
 }
 
 async function inTarget(func, args = []) {
   if (!attachment) throw new Error('No tab attached to this conversation.');
-  if (attachment.session !== browserSession) throw new Error('The attached tab belongs to a previous browser session. Use current tab to attach again.');
+  if (attachment.session !== browserSession) throw new Error('The attached tab belongs to a previous browser session. Choose Use this page to attach again.');
   const tab = await chrome.tabs.get(attachment.id);
   if (tab.status === 'loading') throw new Error('The attached document is still loading. Wait for it to finish and try again.');
   if (attachment.url.startsWith('file:') && !await chrome.extension.isAllowedFileSchemeAccess()) throw new Error('For local PDFs, enable Allow access to file URLs in Pi Accanto’s details at chrome://extensions, then invoke its toolbar action on the PDF.');
@@ -120,28 +146,36 @@ async function inTarget(func, args = []) {
 }
 
 function pageIdentity(origin, url) {
-  if (origin && (location.origin !== origin || (url?.startsWith('file:') && location.href !== url))) return { error: 'The attached tab moved to another site or local file. Use current tab to attach it explicitly.' };
+  if (origin && (location.origin !== origin || (url?.startsWith('file:') && location.href !== url))) return { error: 'The attached tab moved to another site or local file. Choose Use this page to attach it explicitly.' };
   return { title: document.title, url: location.href, origin: location.origin, pdf: document.contentType === 'application/pdf' };
 }
 
 async function showAttachment() {
   const target = attachment;
-  $('target').textContent = target?.title || 'Current tab';
-  $('target').title = target?.url || '';
-  $('composer-target').textContent = target ? `Attached to: ${target.title}` : 'First send attaches to the current tab';
-  let hint = 'Attaches on first send';
+  const revision = ++attachmentRefresh;
+  const [current] = await chrome.tabs.query({ active: true, currentWindow: true });
+  let available = false;
+  let hint = 'Send a message to start';
   if (target) {
     try {
       await inTarget(pageIdentity);
-      hint = 'Attached · Follow-ups stay here';
+      available = true;
+      hint = 'This chat stays on this page';
     } catch {
-      hint = 'Unavailable · Reopen this tab or use current tab';
+      hint = 'Unavailable';
     }
   }
-  if (attachment === target) $('target-hint').textContent = hint;
+  if (revision !== attachmentRefresh || attachment !== target) return;
+  $('target').textContent = target?.title || current?.title || 'Current tab';
+  $('target').title = target?.url || current?.url || '';
+  $('composer-target').textContent = target ? `Message about: ${target.title}` : 'Ask about this page';
+  $('target-hint').textContent = hint;
+  $('tab-switch').hidden = !target || (available && current?.id === target.id);
+  $('current-tab-label').textContent = current?.title ? `Viewing: ${current.title}` : 'You’re viewing another tab';
+  $('use-current-tab').textContent = available ? 'Chat about this tab' : 'Use this page';
 }
 
-async function attachCurrent(fresh = false) {
+async function attachCurrent() {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   if (!tab) throw new Error('Open a website and invoke Pi Accanto’s toolbar action first.');
   if (tab.url && !/^(https?:|file:)/.test(tab.url)) throw new Error('This viewer URL is unsupported. Open the original PDF directly in a normal http(s) or file tab, then invoke Pi Accanto’s toolbar action. Browser-internal, extension, blob and data viewers cannot be read.');
@@ -153,18 +187,18 @@ async function attachCurrent(fresh = false) {
     const results = await chrome.scripting.executeScript({ target: { tabId: tab.id }, func: pageIdentity, args: [null] });
     page = results[0].result;
   } catch {
-    throw new Error(`To attach this tab, invoke Pi Accanto’s toolbar action on it, then choose Use current tab.${!fileAccess ? ' For local PDFs, also enable Allow access to file URLs in its details at chrome://extensions.' : ''}`);
+    throw new Error(`To attach this tab, invoke Pi Accanto’s toolbar action on it, then try again.${!fileAccess ? ' For local PDFs, also enable Allow access to file URLs in its details at chrome://extensions.' : ''}`);
   }
   if (!/^(https?:|file:)/.test(page.url)) throw new Error('This viewer URL is unsupported. Open the original PDF directly in an http(s) or file tab.');
   if (page.url.startsWith('file:') && !page.pdf) throw new Error('Only PDF documents are supported in local file tabs.');
-  if (!fresh && attachment?.id === tab.id && attachment.session === browserSession && attachment.origin === page.origin && (!page.url.startsWith('file:') || attachment.url === page.url)) {
+  if (attachment?.id === tab.id && attachment.session === browserSession && attachment.origin === page.origin && (!page.url.startsWith('file:') || attachment.url === page.url)) {
     await showAttachment();
     return;
   }
   const target = { id: tab.id, ...page, title: page.title || tab.title || page.url, session: browserSession };
   // A supported context head keeps old tasks in durable history, outside the next model request.
   const submission = await root.submit({ type: 'write', entry: {
-    kind: 'accanto.target', head: 'self', data: { target, fresh },
+    kind: 'accanto.target', head: 'self', data: { target },
   } }, context);
   await submission.wait(context);
   attachment = target;
@@ -267,7 +301,7 @@ async function start() {
             if (busy) $('status').textContent = scripted ? 'Running offline check…' : 'Working on this tab…';
           }
         } else result = await inTarget((origin, url) => {
-          if (location.origin !== origin || (url.startsWith('file:') && location.href !== url)) return { error: 'The attached tab moved to another site or local file. Use current tab to attach it explicitly.' };
+          if (location.origin !== origin || (url.startsWith('file:') && location.href !== url)) return { error: 'The attached tab moved to another site or local file. Choose Use this page to attach it explicitly.' };
           return {
             title: document.title, url: location.href, text: document.body.innerText.slice(0, 4000),
             ...(document.querySelector('embed[type="application/pdf"],object[type="application/pdf"],iframe[src$=".pdf"]') ? { pdfNotice: 'Embedded PDF viewer text is not included. Open the PDF’s original URL in its own tab and attach it to read it.' } : {}),
@@ -281,7 +315,7 @@ async function start() {
     }),
     defineTool({ name: 'type_in_focused_field', description: 'Replace the focused text field. Does not submit.', parameters: Type.Object({ text: Type.String() }),
       execute: async ({ text }) => ({ output: [{ type: 'text', text: JSON.stringify(await inTarget((origin, url, value) => {
-        if (location.origin !== origin || (url.startsWith('file:') && location.href !== url)) return { error: 'The attached tab moved to another site or local file. Use current tab to attach it explicitly.' };
+        if (location.origin !== origin || (url.startsWith('file:') && location.href !== url)) return { error: 'The attached tab moved to another site or local file. Choose Use this page to attach it explicitly.' };
         if (document.contentType === 'application/pdf') return { error: 'PDFs are read-only. Editing PDF fields is not supported.' };
         const field = document.activeElement;
         if (!(field instanceof HTMLTextAreaElement) && !(field instanceof HTMLInputElement && ['text', 'search', 'url', 'email', 'tel'].includes(field.type))) return { error: 'Focus an editable text field first. Password and other sensitive field types are excluded.' };
@@ -314,7 +348,9 @@ async function start() {
   view.subscribe(render);
   await showAttachment();
   chrome.tabs.onRemoved.addListener(() => { void showAttachment(); });
-  chrome.tabs.onUpdated.addListener((id) => { if (id === attachment?.id) void showAttachment(); });
+  chrome.tabs.onUpdated.addListener(() => { void showAttachment(); });
+  chrome.tabs.onActivated.addListener(() => { void showAttachment(); });
+  chrome.windows.onFocusChanged.addListener(() => { void showAttachment(); });
   $('status').textContent = scripted ? 'Ready · Offline check, no AI inference' : apiKey ? 'Ready · History saved on this device' : 'Connect your model to get started';
   $('send').disabled = !scripted && !apiKey;
 
@@ -325,9 +361,16 @@ async function start() {
       busy = true;
       $('use-current-tab').disabled = $('new-conversation').disabled = $('send').disabled = true;
       try {
-        await attachCurrent(id === 'new-conversation');
-        if (id === 'new-conversation') $('prompt').value = '';
-        $('status').textContent = id === 'new-conversation' ? 'New conversation · Attached to current tab' : 'Attached · Follow-ups will use this tab';
+        if (id === 'new-conversation') {
+          const submission = await root.submit({ type: 'write', entry: {
+            kind: 'accanto.target', head: 'self', data: { target: null, fresh: true },
+          } }, context);
+          await submission.wait(context);
+          attachment = undefined;
+          $('prompt').value = '';
+          await showAttachment();
+        } else await attachCurrent();
+        $('status').textContent = id === 'new-conversation' ? 'New conversation · Send a message to start on this page' : 'Attached · Follow-ups will use this tab';
       } catch (error) {
         $('status').textContent = `Error: ${error.message}`;
       } finally {
@@ -353,7 +396,7 @@ async function start() {
       try {
         await inTarget(pageIdentity);
       } catch (error) {
-        throw new Error(`The attached tab is unavailable. ${error.message} Reopen it and invoke Pi Accanto’s toolbar action, or choose Use current tab to change tasks.`);
+        throw new Error(`The attached tab is unavailable. ${error.message} Reopen it and invoke Pi Accanto’s toolbar action, or start a New chat.`);
       }
       const typing = prompt.match(/^Type:\s*([\s\S]+)$/i);
       if (scripted) faux.setResponses([
