@@ -16,6 +16,9 @@ const manifest = JSON.parse(await readFile(resolve(extension, 'manifest.json'), 
 manifest.host_permissions = ['http://127.0.0.1/*'];
 await writeFile(resolve(extension, 'manifest.json'), JSON.stringify(manifest));
 const modelRequests = [];
+const nativeRequests = [];
+let nativeFailure = false;
+let nativeSlow = false;
 const server = createServer((req, res) => {
   if (req.url === '/custom/v1/models') {
     modelRequests.push({ path: req.url, authorization: req.headers.authorization });
@@ -30,6 +33,56 @@ const server = createServer((req, res) => {
       modelRequests.push({ path: req.url, authorization: req.headers.authorization, body: JSON.parse(body) });
       res.setHeader('Content-Type', 'text/event-stream');
       res.end(`data: ${JSON.stringify({ choices: [{ index: 0, delta: { role: 'assistant', content: 'Configured model fixture response 719.' }, finish_reason: null }] })}\n\ndata: ${JSON.stringify({ choices: [{ index: 0, delta: {}, finish_reason: 'stop' }] })}\n\ndata: [DONE]\n\n`);
+    });
+    return;
+  }
+  if (req.url.startsWith('/native/')) {
+    const url = new URL(req.url, 'http://localhost');
+    if (req.method === 'GET') {
+      nativeRequests.push({ path: url.pathname, headers: req.headers });
+      res.setHeader('Content-Type', 'application/json');
+      if (url.pathname === '/native/models') res.end(JSON.stringify({ data: [{ id: 'gpt-4.1-mini' }] }));
+      else if (url.pathname === '/native/v1/models/claude-sonnet-4-6') res.end(JSON.stringify({ id: 'claude-sonnet-4-6', type: 'model' }));
+      else if (url.pathname === '/native/models/gemini-2.5-flash') res.end(JSON.stringify({ name: 'models/gemini-2.5-flash', supportedGenerationMethods: ['generateContent'] }));
+      else { res.writeHead(404); res.end('{}'); }
+      return;
+    }
+    let body = '';
+    req.on('data', chunk => { body += chunk; });
+    req.on('end', () => {
+      const input = JSON.parse(body);
+      nativeRequests.push({ path: url.pathname, headers: req.headers, body: input });
+      if (nativeFailure) { res.writeHead(401, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: { message: 'Invalid fixture credential', type: 'authentication_error', code: 401 } })); return; }
+      res.setHeader('Content-Type', 'text/event-stream');
+      if (nativeSlow) { res.flushHeaders(); return; }
+      const answer = 'Native adapter read invoice NZ-427: $183.75.';
+      const event = (type, data) => `event: ${type}\ndata: ${JSON.stringify({ type, ...data })}\n\n`;
+      if (url.pathname === '/native/responses') {
+        const finished = input.input.some(item => item.type === 'function_call_output');
+        const item = finished
+          ? { type: 'message', id: 'msg_native', role: 'assistant', content: [{ type: 'output_text', text: answer, annotations: [] }] }
+          : { type: 'function_call', id: 'fc_native', call_id: 'call_native', name: 'inspect_tab', arguments: '{}' };
+        res.write(event('response.created', { response: { id: 'resp_native' } }));
+        res.write(event('response.output_item.added', { output_index: 0, item: { ...item, ...(finished ? { content: [] } : { arguments: '' }) } }));
+        if (finished) {
+          res.write(event('response.content_part.added', { output_index: 0, content_index: 0, part: { type: 'output_text', text: '', annotations: [] } }));
+          res.write(event('response.output_text.delta', { output_index: 0, content_index: 0, delta: answer }));
+        } else res.write(event('response.function_call_arguments.delta', { output_index: 0, delta: '{}' }));
+        res.write(event('response.output_item.done', { output_index: 0, item }));
+        res.end(event('response.completed', { response: { id: 'resp_native', status: 'completed', output: [item], usage: { input_tokens: 20, output_tokens: 8, total_tokens: 28 } } }));
+      } else if (url.pathname === '/native/v1/messages') {
+        const finished = input.messages.some(message => Array.isArray(message.content) && message.content.some(part => part.type === 'tool_result'));
+        res.write(event('message_start', { message: { id: 'msg_native', role: 'assistant', model: input.model, content: [], usage: { input_tokens: 20, output_tokens: 0 } } }));
+        res.write(event('content_block_start', { index: 0, content_block: finished ? { type: 'text', text: '' } : { type: 'tool_use', id: 'toolu_native', name: 'inspect_tab', input: {} } }));
+        res.write(event('content_block_delta', { index: 0, delta: finished ? { type: 'text_delta', text: answer } : { type: 'input_json_delta', partial_json: '{}' } }));
+        res.write(event('content_block_stop', { index: 0 }));
+        res.write(event('message_delta', { delta: { stop_reason: finished ? 'end_turn' : 'tool_use', stop_sequence: null }, usage: { output_tokens: 8 } }));
+        res.end(event('message_stop', {}));
+      } else if (url.pathname === '/native/models/gemini-2.5-flash:streamGenerateContent') {
+        const finished = input.contents.some(message => message.parts.some(part => part.functionResponse));
+        const parts = finished ? [{ text: answer }] : [{ functionCall: { id: 'google_native', name: 'inspect_tab', args: {} } }];
+        res.end(`data: ${JSON.stringify({ candidates: [{ content: { role: 'model', parts }, finishReason: 'STOP' }], usageMetadata: { promptTokenCount: 20, candidatesTokenCount: 8, totalTokenCount: 28 } })}\n\n`);
+      } else { res.writeHead(404); res.end(); }
     });
     return;
   }
@@ -62,6 +115,8 @@ try {
   await panel.reload();
   await panel.waitForFunction(() => document.getElementById('status')?.textContent.includes('Connect your model'));
   assert.equal(await panel.locator('#send').isDisabled(), true, 'Unscoped legacy credentials cannot select a server');
+  await panel.setViewportSize({ width: 420, height: 850 });
+  await panel.screenshot({ path: resolve(artifacts, 'model-setup.png') });
   await panel.setViewportSize({ width: 320, height: 640 });
   await panel.screenshot({ path: resolve(artifacts, 'fresh-install.png') });
   assert.equal(await panel.evaluate(() => document.documentElement.scrollWidth), 320);
@@ -233,7 +288,7 @@ try {
   await reopened.locator('#model-id').fill('fixture-model-719');
   await reopened.locator('#connect').click();
   await reopened.waitForFunction(() => document.getElementById('provider-notice').textContent === 'fixture-model-719');
-  assert.deepEqual(await reopened.evaluate(async () => (await chrome.storage.local.get('modelConnection')).modelConnection), { endpoint: modelEndpoint, modelId: 'fixture-model-719' });
+  assert.deepEqual(await reopened.evaluate(async () => (await chrome.storage.local.get('modelConnection')).modelConnection), { endpoint: modelEndpoint, modelId: 'fixture-model-719', api: 'openai-completions' });
   assert.doesNotMatch(JSON.stringify(await reopened.evaluate(() => chrome.storage.local.get(null))), /fixture-key-719/);
   assert.equal(await reopened.locator('#api-key').inputValue(), '');
   await reopened.reload();
@@ -262,13 +317,118 @@ try {
   assert.match(await reopened.locator('article.assistant').last().textContent(), /Configured model fixture response 719/);
   assert.equal(modelRequests.at(-1).body.model, 'fixture-model-719');
   assert.equal(modelRequests.at(-1).authorization, 'Bearer fixture-key-719');
+  // Previously saved Chat Completions settings and session keys have no API tag.
+  await reopened.evaluate(async () => {
+    const { modelConnection } = await chrome.storage.local.get('modelConnection');
+    delete modelConnection.api;
+    await chrome.storage.local.set({ modelConnection });
+    await chrome.storage.session.remove('apiKeyApi');
+  });
+  await reopened.reload();
+  await reopened.waitForFunction(() => document.getElementById('status').textContent.includes('Ready'));
+  assert.equal(await reopened.locator('#model-api').inputValue(), 'openai-completions');
+  assert.match(await reopened.locator('#connection-status').textContent(), /Credential available/);
+  const nativeEndpoint = `http://127.0.0.1:${server.address().port}/native`;
+  for (const [api, modelId, keyHeader] of [
+    ['openai-responses', 'gpt-4.1-mini', 'authorization'],
+    ['anthropic-messages', 'claude-sonnet-4-6', 'x-api-key'],
+    ['google-generative-ai', 'gemini-2.5-flash', 'x-goog-api-key'],
+  ]) {
+    await reopened.locator('#connection > summary').click();
+    await reopened.locator('#model-api').selectOption(api);
+    await reopened.setViewportSize({ width: 420, height: 850 });
+    assert.equal(await reopened.locator('#api-key').inputValue(), '');
+    await reopened.screenshot({ path: resolve(artifacts, `settings-${api}.png`) });
+    await reopened.setViewportSize({ width: 320, height: 640 });
+    assert.equal(await reopened.evaluate(() => document.documentElement.scrollWidth), 320);
+    await reopened.screenshot({ path: resolve(artifacts, `settings-${api}-narrow.png`) });
+    await reopened.locator('#connect').scrollIntoViewIfNeeded();
+    const connectBox = await reopened.locator('#connect').boundingBox();
+    const settingsBox = await reopened.locator('#settings').boundingBox();
+    assert.ok(connectBox.y >= settingsBox.y && connectBox.y + connectBox.height <= settingsBox.y + settingsBox.height, 'Connect is reachable at 320px for every native format');
+    await reopened.locator('#model-endpoint').fill(nativeEndpoint);
+    await reopened.locator('#model-id').fill(api === 'google-generative-ai' ? `models/${modelId}` : modelId);
+    const beforeKey = nativeRequests.length;
+    await reopened.locator('#connect').click();
+    await reopened.waitForFunction(() => document.getElementById('connection-status').textContent.includes('Saved keys are not reused'));
+    assert.equal(nativeRequests.length, beforeKey, 'Changing API format must not send the previous key, even to the same endpoint');
+    const key = `fixture-${api}-key`;
+    await reopened.locator('#api-key').fill(key);
+    await reopened.locator('#connect').click();
+    await reopened.waitForFunction(() => document.getElementById('provider-notice').textContent === document.getElementById('model-id').value && !document.getElementById('send').disabled);
+    assert.equal(await reopened.locator('#model-api').inputValue(), api);
+    assert.equal(await reopened.locator('#model-id').inputValue(), modelId);
+    assert.equal(await reopened.locator('#api-key').inputValue(), '');
+    assert.doesNotMatch(JSON.stringify(await reopened.evaluate(() => chrome.storage.local.get(null))), new RegExp(key));
+    await fresh.bringToFront();
+    await reopened.locator('#new-conversation').evaluate(button => button.click());
+    await reopened.waitForFunction(() => !document.getElementById('send').disabled);
+    const start = nativeRequests.length;
+    await reopened.locator('#prompt').fill('Inspect the attached invoice and report its number and total.');
+    await reopened.locator('#send').evaluate(button => button.click());
+    await reopened.waitForFunction(() => !document.getElementById('send').disabled);
+    assert.match(await reopened.locator('#status').textContent(), /Reply complete/);
+    assert.match(await reopened.locator('article.assistant').last().textContent(), /NZ-427: \$183\.75/);
+    const requests = nativeRequests.slice(start);
+    assert.equal(requests.length, 2, 'A native tool call must execute and its result must reach the next model turn');
+    for (const request of requests) {
+      assert.equal(request.headers[keyHeader], keyHeader === 'authorization' ? `Bearer ${key}` : key);
+      if (keyHeader !== 'authorization') assert.equal(request.headers.authorization, undefined);
+      assert.doesNotMatch(JSON.stringify(request.body), /unchanged/, 'Passwords must stay out of native provider requests');
+    }
+    assert.match(JSON.stringify(requests[1].body), /Invoice NZ-427 totals \$183\.75/);
+    if (api === 'openai-responses') {
+      assert.equal(requests[0].body.store, false);
+      assert.ok(requests[0].body.tools.some(tool => tool.name === 'inspect_tab'));
+      assert.ok(requests[1].body.input.some(item => item.type === 'function_call_output' && item.call_id === 'call_native'));
+    } else if (api === 'anthropic-messages') {
+      assert.equal(requests[0].headers['anthropic-dangerous-direct-browser-access'], 'true');
+      assert.ok(requests[0].body.tools.some(tool => tool.name === 'inspect_tab'));
+      assert.ok(requests[1].body.messages.some(message => Array.isArray(message.content) && message.content.some(part => part.type === 'tool_result' && part.tool_use_id === 'toolu_native')));
+    } else {
+      assert.ok(requests[0].body.tools[0].functionDeclarations.some(tool => tool.name === 'inspect_tab'));
+      assert.ok(requests[1].body.contents.some(message => message.parts.some(part => part.functionResponse?.name === 'inspect_tab')));
+    }
+    nativeFailure = true;
+    await reopened.locator('#prompt').fill('Check once more.');
+    await reopened.locator('#send').evaluate(button => button.click());
+    await reopened.waitForFunction(() => !document.getElementById('send').disabled);
+    assert.match(await reopened.locator('article.assistant').last().textContent(), /401|Invalid fixture credential/);
+    nativeFailure = false;
+    nativeSlow = true;
+    const pending = reopened.waitForResponse(response => response.url().includes('/native/') && response.request().method() === 'POST');
+    await reopened.locator('#prompt').fill('Wait for this native stream.');
+    await reopened.locator('#send').evaluate(button => button.click());
+    await pending;
+    await reopened.locator('#stop').evaluate(button => button.click());
+    await reopened.waitForFunction(() => !document.getElementById('send').disabled);
+    assert.match(await reopened.locator('#status').textContent(), /aborted|cancel/i);
+    nativeSlow = false;
+    await reopened.locator('#prompt').fill('Recover after Stop.');
+    await reopened.locator('#send').evaluate(button => button.click());
+    await reopened.waitForFunction(() => !document.getElementById('send').disabled);
+    assert.match(await reopened.locator('#status').textContent(), /Reply complete/);
+    assert.match(await reopened.locator('article.assistant').last().textContent(), /NZ-427: \$183\.75/);
+    await reopened.reload();
+    await reopened.waitForFunction(() => document.getElementById('status').textContent.includes('Ready'));
+    assert.equal(await reopened.locator('#model-api').inputValue(), api);
+    assert.equal(await reopened.locator('#model-endpoint').inputValue(), nativeEndpoint);
+  }
+  await reopened.locator('#connection > summary').click();
+  await reopened.locator('#model-api').selectOption('openai-completions');
+  await reopened.locator('#model-endpoint').fill(modelEndpoint);
+  await reopened.locator('#model-id').fill('fixture-model-719');
+  await reopened.locator('#api-key').fill('fixture-key-719');
+  await reopened.locator('#connect').click();
+  await reopened.waitForFunction(() => document.getElementById('provider-notice').textContent === 'fixture-model-719');
   await reopened.reload();
   await reopened.waitForFunction(() => document.getElementById('status').textContent.includes('Ready'));
   await reopened.setViewportSize({ width: 320, height: 640 });
   await reopened.locator('#connection').evaluate(element => { element.open = true; });
+  await reopened.locator('#connect').scrollIntoViewIfNeeded();
   const connectBounds = await reopened.locator('#connect').boundingBox();
   const settingsBounds = await reopened.locator('#settings').boundingBox();
-  assert.ok(connectBounds.y + connectBounds.height < settingsBounds.y + settingsBounds.height, 'Connect is fully visible without scrolling in the narrow settings view');
+  assert.ok(connectBounds.y + connectBounds.height <= settingsBounds.y + settingsBounds.height, 'Connect is reachable within the scrollable narrow settings view');
   await reopened.screenshot({ path: resolve(artifacts, 'settings-model-narrow.png') });
   await reopened.locator('#all-sites').scrollIntoViewIfNeeded();
   await reopened.screenshot({ path: resolve(artifacts, 'settings-access-narrow.png') });
@@ -286,7 +446,7 @@ try {
   assert.equal(await settingsRestored.locator('#model-endpoint').inputValue(), modelEndpoint);
   assert.equal(await settingsRestored.locator('#model-id').inputValue(), 'fixture-model-719');
   assert.equal(await settingsRestored.locator('#send').isDisabled(), true, 'Endpoint/model persist after restart; the session key does not');
-  console.log('PASS: browser controls, clipboard, tab/context boundaries, history, configurable endpoint/model request routing, credential isolation, settings persistence and session-key expiry');
+  console.log('PASS: browser controls, clipboard, tab/context boundaries, history, Chat Completions/Responses/Anthropic/Gemini routing, native tool round trips, auth errors, Stop/recovery, credential isolation, settings persistence and session-key expiry');
 } finally {
   await browser?.close();
   await new Promise((done) => server.close(done));

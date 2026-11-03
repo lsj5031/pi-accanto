@@ -13,8 +13,10 @@
       <summary aria-label="Model connection"><span id="provider-notice">main</span><span class="connection-chevron" aria-hidden="true"></span></summary>
       <form id="settings">
         <h2>Model connection</h2>
-        <label for="mode">Provider</label>
-        <select id="mode"><option value="live">OpenAI-compatible model</option><option value="scripted">Offline scripted check</option></select>
+        <label for="mode">Mode</label>
+        <select id="mode"><option value="live">AI model</option><option value="scripted">Offline scripted check</option></select>
+        <label for="model-api">Model API</label>
+        <select id="model-api" aria-describedby="endpoint-help"><option value="openai-completions">Chat Completions</option><option value="openai-responses">OpenAI · Responses</option><option value="anthropic-messages">Anthropic · Messages</option><option value="google-generative-ai">Google Gemini</option></select>
         <label for="model-endpoint">API base URL</label>
         <input id="model-endpoint" type="url" required spellcheck="false" placeholder="https://your-server.example/v1" aria-describedby="endpoint-help">
         <p id="endpoint-help">OpenAI-compatible URL, usually ending in /v1.</p>

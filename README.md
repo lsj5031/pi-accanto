@@ -46,7 +46,8 @@ Completed responses have a **Copy** button.
 ## Get started
 
 You need **Chrome**, **Node.js 22 or later**, and access to an
-**OpenAI-compatible model server with tool calling and streaming**. You'll need
+**AI model with tool calling and streaming**: OpenAI, Anthropic, Google Gemini,
+or an OpenAI-compatible server. You'll need
 its API base URL, exact model ID and API key. Chrome is tested; Edge is not yet verified.
 
 ### 1. Build and install the extension
@@ -73,19 +74,29 @@ source, rebuild, and click **Reload** on Pi Accanto at `chrome://extensions`.
 Open the control at the top right of Pi Accanto's header. On a fresh install,
 it says **Set up model**.
 
-1. Leave **Provider** set to **OpenAI-compatible model**.
-2. Enter your server's **API base URL**, usually ending in `/v1`.
+1. Leave **Mode** set to **AI model**, then choose your **Model API**.
+2. Use the provider's default **API base URL**, or enter your own server's URL.
 3. Enter its exact **Model ID** and **API key**.
 4. Click **Connect** and accept Chrome's request to access that server.
 
-The connection check requires the server's `/models` endpoint to list your model.
+| Model API | Default API base URL | Key and model |
+| --- | --- | --- |
+| Chat Completions | Enter your OpenAI-compatible server's URL, usually ending in `/v1` | Your server's key and exact model ID. For OpenAI, use `https://api.openai.com/v1`. |
+| OpenAI · Responses | `https://api.openai.com/v1` | OpenAI API key and model ID, such as `gpt-4.1-mini`. |
+| Anthropic · Messages | `https://api.anthropic.com` | Anthropic API key and model ID, such as `claude-sonnet-4-6`. Do not add `/v1` to this base URL. |
+| Google Gemini | `https://generativelanguage.googleapis.com/v1beta` | Gemini Developer API key and model ID, such as `gemini-2.5-flash`. Vertex AI credentials are not supported. |
+
+These formats use Pi's upstream provider adapters. A ChatGPT, Claude or Gemini
+chat subscription does not supply an API key. Model availability depends on your account.
+Connect checks the server's model catalog (`/models`, Anthropic's `/v1/models/{id}`,
+or Gemini's `/models/{id}`); it does not send a chat message.
 There is no preset model or bundled key. Your chosen provider may charge for use.
 
 ![Fresh installation showing the model URL, model ID and API key fields](docs/screenshots/model-setup.png)
 
-The URL and model ID are saved on this device. **API keys last only for the
+The API format, URL and model ID are saved on this device. **API keys last only for the
 browser session**: enter them again after restarting Chrome. Switching to a
-different model endpoint requires its own key.
+different model endpoint or API format requires its own key.
 
 ### 3. Ask about a page
 
@@ -194,9 +205,10 @@ provider. Read [Privacy](PRIVACY.md) before using private documents.
   reading order may be imperfect; encrypted PDFs are unsupported.
 - Login requirements, redirects, expired links and site restrictions can prevent
   reading a source or PDF that you can see in Chrome.
-- Model compatibility varies. The current adapter uses a reasoning-enabled
-  profile with 262,144 context and 65,536 output token limits; these are not yet
-  editable. Use a compatible server/model rather than assuming every API works.
+- Model compatibility varies. Native APIs use Pi's bundled model profiles where
+  available; unknown native models use a 128,000-token context and 4,096-token
+  output profile. Chat Completions keeps its existing reasoning-enabled profile
+  with 262,144 context and 65,536 output tokens. These limits are not yet editable.
 - This is an early release. Edge and unattended execution with all views closed
   are not verified. See [the roadmap](https://github.com/lsj5031/pi-accanto/issues/1)
   for planned selection explanations, page highlights and table/CSV workflows.
@@ -217,6 +229,8 @@ provider. Read [Privacy](PRIVACY.md) before using private documents.
 
 Built on Pi Durable 1.4.0, with bundled QuickJS WASM and PDF.js. Node is needed
 for building/testing only. No native host or separate MCP process runs at runtime.
+Model streaming and tool-call serialization use Pi AI's Chat Completions,
+Responses, Anthropic Messages and Google Generative AI adapters.
 
 ```sh copy Copy Test Commands
 npm ci

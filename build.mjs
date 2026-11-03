@@ -35,6 +35,9 @@ for (const directory of [...packages].sort()) {
   if (!files.length && metadata.name.startsWith('@earendil-works/') && metadata.version === '1.4.0' && metadata.license === 'MIT') {
     await copyFile('licenses/PI-LICENSE', `${destination}/LICENSE`);
     files.push('LICENSE');
+  } else if (!files.length && metadata.name === 'standardwebhooks' && metadata.version === '1.1.1' && metadata.license === 'MIT') {
+    await copyFile('licenses/STANDARDWEBHOOKS-LICENSE', `${destination}/LICENSE`);
+    files.push('LICENSE');
   } else {
     if (!files.length) throw new Error(`Missing license notice for bundled package ${metadata.name}; review before distributing.`);
     for (const file of files) await copyFile(`${directory}/${file}`, `${destination}/${file}`);

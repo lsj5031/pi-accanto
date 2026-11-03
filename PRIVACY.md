@@ -10,7 +10,7 @@ to those services.
 
 | Action | Recipient | Data |
 | --- | --- | --- |
-| Connect a model | Your configured API server | A `/models` request with that server's API key. |
+| Connect a model | Your configured API server | A model-catalog request with that server's API key: `/models` for OpenAI formats, `/v1/models/{id}` for Anthropic, or `/models/{id}` for Gemini. No chat message is sent by this check. |
 | Send a page-chat message | Your configured API server | Your question, relevant task history, the attached page's title/URL and a fresh bounded HTML excerpt. |
 | Read/search a page or PDF | Your configured API server, when tool results enter the conversation | Extracted text, page references, URLs and requested field values. Tools exclude password inputs; explicit HTML inspection can include ordinary input/textarea values. |
 | Search the web | Exa by default, or your selected TinyFish/Brave service | The model's deliberate search query and the selected provider's key if applicable. The whole page is not automatically sent to the search service; review requests carefully because the model can include facts from the conversation in a query. |
@@ -27,14 +27,14 @@ answers reliable or page content trustworthy.
 
 ## What stays on this device
 
-- Chrome local storage holds model endpoint/model ID and the conversation catalog.
+- Chrome local storage holds model API format, endpoint/model ID and the conversation catalog.
 - Per-conversation IndexedDB stores chat messages, inspected content, tool results,
   source excerpts, generated scripts and durable task state. These are persistent
   data, including content read from private pages. They are not encrypted by Pi
   Accanto. Browser-profile access and backups may expose them.
 - Model/search keys live in `chrome.storage.session` for the browser session.
   They are not intentionally placed in chat history or persistent local storage.
-  Changing model endpoints requires an explicitly scoped credential. Never paste
+  Changing model endpoints or API formats requires an explicitly scoped credential. Never paste
   a key into chat: that would become conversation content.
 - Page attachments, browser-session identifiers and selected search settings are
   session state. Exact-source approvals and active sandbox state are task-scoped;
