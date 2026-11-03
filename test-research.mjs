@@ -1,11 +1,14 @@
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { mkdtemp, rm, cp, readFile, writeFile, mkdir } from 'node:fs/promises';
-import { tmpdir, homedir } from 'node:os';
+import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import { chromium } from 'playwright';
+import { browserOptions, artifactDirectory, liveModelSettings } from './test/browser.mjs';
 
-const artifacts = resolve('../.amp/in/artifacts/pi-accanto-research');
+const live = process.argv.includes('--live');
+const model = live ? liveModelSettings() : null;
+const artifacts = artifactDirectory(live ? 'research-live' : 'research');
 await mkdir(artifacts, { recursive: true });
 const profile = await mkdtemp(`${tmpdir()}/accanto-research-`);
 const extension = resolve(profile, 'extension');
@@ -14,6 +17,7 @@ const manifest = JSON.parse(await readFile(resolve(extension, 'manifest.json'), 
 // Only the disposable fixture and provider are pregranted; production requests
 // optional host access from explicit user gestures.
 manifest.host_permissions.push('http://127.0.0.1/*', 'https://developer.mozilla.org/*', 'https://api.search.tinyfish.ai/*', 'https://api.search.brave.com/*');
+if (model) manifest.host_permissions.push(`${new URL(model.endpoint).origin}/*`);
 await writeFile(resolve(extension, 'manifest.json'), JSON.stringify(manifest));
 let sourceReads = 0;
 const invoiceDemo = await readFile('docs/examples/code-mode-invoice.html', 'utf8');
@@ -28,9 +32,14 @@ const server = createServer((req, res) => {
 await new Promise((ready) => server.listen(0, '127.0.0.1', ready));
 const origin = `http://127.0.0.1:${server.address().port}`;
 let browser, panel;
-const report = { provider: 'Live Exa outcome and synthetic protocol fixtures are recorded separately. TinyFish and Brave successes use fixtures only; invalid-key endpoint checks are real.', checks: [], modelRequests: [], modelResponses: [] };
+const report = { provider: live ? 'Live provider outcomes and synthetic protocol fixtures are recorded separately.' : 'Fixture-only checks: no external providers, model credentials or personal config files.', checks: [], modelRequests: [], modelResponses: [] };
+const unexpectedRequests = [];
 try {
-  browser = await chromium.launchPersistentContext(profile, { channel: 'chromium', headless: false, args: [`--disable-extensions-except=${extension}`, `--load-extension=${extension}`], viewport: { width: 380, height: 850 }, deviceScaleFactor: 2 });
+  browser = await chromium.launchPersistentContext(profile, { ...browserOptions, args: [`--disable-extensions-except=${extension}`, `--load-extension=${extension}`], viewport: { width: 380, height: 850 }, deviceScaleFactor: 2 });
+  if (!live) await browser.route(/^https?:\/\/(?!127\.0\.0\.1(?=[:/]))/, route => {
+    unexpectedRequests.push(new URL(route.request().url()).origin);
+    return route.abort('blockedbyclient');
+  });
   const worker = browser.serviceWorkers()[0] ?? await browser.waitForEvent('serviceworker');
   await worker.evaluate(() => chrome.storage.local.set({ mode: 'scripted' }));
   const fixture = await browser.newPage();
@@ -83,6 +92,7 @@ try {
   assert.equal(await panel.locator('#search-provider').inputValue(), 'exa');
   assert.equal(await worker.evaluate(async () => (await chrome.storage.session.get('braveKey')).braveKey), undefined);
   assert.equal(await worker.evaluate(async () => (await chrome.storage.session.get('tinyfishKey')).tinyfishKey), undefined);
+  if (live) {
   const exaResponses = [];
   const captureExa = (response) => { if (response.url().startsWith('https://mcp.exa.ai/')) exaResponses.push(response); };
   panel.on('response', captureExa);
@@ -118,6 +128,7 @@ try {
   await panel.waitForFunction(() => !document.getElementById('send').disabled);
   await panel.locator('#web-conversation').evaluate((element) => element.click());
   await panel.waitForFunction(() => !document.getElementById('send').disabled);
+  }
   const exaQueries = [];
   await panel.route('https://mcp.exa.ai/mcp?tools=web_search_exa', async (route) => {
     const request = route.request().postDataJSON();
@@ -166,7 +177,7 @@ try {
   assert.equal(await panel.locator('#source-list .source-card').count(), 3);
   assert.equal(sourceReads, 0);
   assert.deepEqual(exaQueries, ['empty', 'rpc-error', 'tool-error', 'changed', 'limited', 'json']);
-  report.checks.push('Actual keyless Exa extension-origin attempt, with live outcome and synthetic protocol fixture distinguished; separately approved actual MDN read; Exa SSE/JSON fixtures with Highlights/Text, dates, empty results, HTTP200 rate limit, RPC/tool errors and unknown content; no key or identity header; explicit browser fallback');
+  report.checks.push('Exa SSE/JSON fixtures with Highlights/Text, dates, empty results, HTTP200 rate limit, RPC/tool errors and unknown content; no key or identity header; explicit browser fallback');
   await panel.locator('#research-settings').evaluate((element) => { element.open = true; });
   await panel.screenshot({ path: resolve(artifacts, 'exa-settings.png') });
   await panel.locator('#search-provider').selectOption('tinyfish');
@@ -191,8 +202,10 @@ try {
   await assertSettingsLayout();
   await panel.screenshot({ path: resolve(artifacts, 'tinyfish-settings-narrow.png') });
   await panel.setViewportSize({ width: 380, height: 850 });
-  report.tinyfishInvalidKey = await send('Search: Pi Accanto integration test');
-  assert.match(report.tinyfishInvalidKey, /TinyFish returned HTTP|Failed to fetch/);
+  if (live) {
+    report.tinyfishInvalidKey = await send('Search: Pi Accanto integration test');
+    assert.match(report.tinyfishInvalidKey, /TinyFish returned HTTP|Failed to fetch/);
+  }
   let tinyfishStatus = 200;
   await panel.route('https://api.search.tinyfish.ai/**', async (route) => {
     assert.equal(route.request().headers()['x-api-key'], 'invalid-tinyfish-key');
@@ -214,7 +227,7 @@ try {
   await panel.locator('#disable-search').evaluate((element) => element.click());
   await panel.waitForFunction(() => document.getElementById('search-provider').value === 'exa');
   assert.equal(await worker.evaluate(async () => (await chrome.storage.session.get('tinyfishKey')).tinyfishKey), undefined);
-  report.checks.push('TinyFish optional session key: real invalid-key rejection; fixture success and429; no silent Exa fallback; key not in local storage, cleared from input and forgotten explicitly');
+  report.checks.push('TinyFish optional session key: fixture success and429; no silent Exa fallback; key not in local storage, cleared from input and forgotten explicitly');
   await panel.locator('#search-provider').selectOption('brave');
   await worker.evaluate(() => chrome.storage.session.set({ searchProvider: 'brave' }));
   assert.match(await send('Search: public research query'), /not configured/);
@@ -226,11 +239,11 @@ try {
   await assertSettingsLayout();
   await panel.screenshot({ path: resolve(artifacts, 'search-settings.png') });
   await panel.locator('#research-settings').evaluate((element) => { element.open = false; });
-  // Exercise an actual provider HTTP failure in the extension. No valid key or
-  // paid search is used; a fixture must never be reported as provider success.
-  const providerFailure = await send('Search: Pi Accanto API integration test');
-  assert.match(providerFailure, /Brave Search returned HTTP|Failed to fetch/);
-  report.providerFailure = providerFailure;
+  if (live) {
+    const providerFailure = await send('Search: Pi Accanto API integration test');
+    assert.match(providerFailure, /Brave Search returned HTTP|Failed to fetch/);
+    report.providerFailure = providerFailure;
+  }
   const queries = [];
   let providerStatus = 200;
   await panel.route('https://api.search.brave.com/res/v1/web/search?**', async (route) => {
@@ -290,23 +303,26 @@ try {
   await panel.waitForFunction(() => document.getElementById('status').textContent.includes('Ready'));
   assert.equal(await panel.locator('#sources').isVisible(), false);
   assert.match(await send(`Read source: ${origin}/source`), /Source not allowed/);
-  report.checks.push('Web-only context; missing key; real provider rejection; fixture search normalization, empty results and 429; per-URL approval; bounded source extraction; multi-call partial failure; Stop pending read and recovery; approvals reset on reload');
+  report.checks.push('Web-only context; missing key; fixture search normalization, empty results and 429; per-URL approval; bounded source extraction; multi-call partial failure; Stop pending read and recovery; approvals reset on reload');
+  if (live) {
   // Real model chooses tools and writes its own script. This checks the local
   // model integration without claiming a live Brave search succeeded.
-  const config = JSON.parse(await readFile(resolve(homedir(), '.pi/agent/models.json'), 'utf8'));
   // This disposable extension's ID is not on the local model server's Origin
   // allowlist. Relay only this test's model requests through Node; the real
   // model still chooses tools and generates the scripts. Native sidebar tests
   // use the canonical extension ID and exercise direct transport separately.
-  await panel.route('http://192.168.1.111:11236/v1/chat/completions', async (route) => {
+  await panel.route(`${model.endpoint}/chat/completions`, async (route) => {
     report.modelRequests.push(route.request().postDataJSON());
-    const response = await fetch(route.request().url(), { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${config.providers['local-gguf'].apiKey}` }, body: route.request().postData() });
+    const response = await fetch(route.request().url(), { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${model.apiKey}` }, body: route.request().postData(), redirect: 'error', signal: AbortSignal.timeout(120000) });
     const body = Buffer.from(await response.arrayBuffer());
     report.modelResponses.push({ status: response.status, body: body.toString('utf8') });
     await writeFile(resolve(artifacts, 'report.json'), JSON.stringify(report, null, 2));
     await route.fulfill({ status: response.status, contentType: response.headers.get('content-type'), body });
   });
-  await worker.evaluate(async (key) => { await chrome.storage.session.set({ apiKey: key }); await chrome.storage.local.set({ mode: 'live' }); }, config.providers['local-gguf'].apiKey);
+  await worker.evaluate(async ({ endpoint, modelId, apiKey }) => {
+    await chrome.storage.session.set({ apiKey, apiKeyEndpoint: endpoint });
+    await chrome.storage.local.set({ mode: 'live', modelConnection: { endpoint, modelId } });
+  }, model);
   await panel.reload();
   await panel.waitForFunction(() => document.getElementById('status').textContent.includes('Ready'));
   await fixture.bringToFront();
@@ -391,7 +407,9 @@ try {
   assert.ok(sourcedAnswer.includes(`${origin}/source`));
   report.liveWebFixture = sourcedAnswer;
   await panel.screenshot({ path: resolve(artifacts, 'live-sourced-answer.png') });
+  }
   assert.deepEqual(errors, []);
+  assert.deepEqual(unexpectedRequests, [], 'Fixture checks must not fall through to real external services');
   assert.equal(await panel.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
   await writeFile(resolve(artifacts, 'report.json'), JSON.stringify(report, null, 2));
   console.log('Research checks passed. Evidence:', artifacts);

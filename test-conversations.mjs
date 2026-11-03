@@ -4,8 +4,9 @@ import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import { chromium } from 'playwright';
+import { browserOptions, artifactDirectory } from './test/browser.mjs';
 
-const artifacts = resolve('../.amp/in/artifacts/pi-accanto-conversations');
+const artifacts = artifactDirectory('conversations');
 await mkdir(artifacts, { recursive: true });
 const profile = await mkdtemp(`${tmpdir()}/accanto-conversations-`);
 const extension = resolve(profile, 'extension');
@@ -38,7 +39,7 @@ async function send(panel, prompt) {
 }
 try {
   browser = await chromium.launchPersistentContext(profile, {
-    channel: 'chromium', headless: false,
+    ...browserOptions,
     args: [`--disable-extensions-except=${extension}`, `--load-extension=${extension}`],
     viewport: { width: 380, height: 850 },
   });

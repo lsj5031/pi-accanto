@@ -8,6 +8,9 @@ BrowserMCP or separate Pi process is needed. Code Mode runs locally bundled
 QuickJS WASM in a dedicated browser worker. Node is used only to build and test
 the extension, not at runtime.
 
+Early release · [MIT license](LICENSE) · [Data and privacy](PRIVACY.md) ·
+[Contributing](CONTRIBUTING.md) · [Third-party notices](THIRD_PARTY_NOTICES.md)
+
 ## What you can do today
 
 Ask about the tab you already have open, keep a sequence of follow-up questions
@@ -66,9 +69,10 @@ Replace a focused text field, verify the result, and leave the form unsubmitted.
 ![Pi Accanto updating the focused customer message and confirming the edit without submitting](docs/screenshots/conversation-edit.png)
 
 Completed answers include **Copy**, with confirmation after copying the original
-Markdown. The following capture uses the real model in Chrome’s sidebar.
+Markdown. This capture uses the explicitly labeled offline scripted check in an
+extension tab at sidebar width; it performs no AI inference.
 
-![Pi Accanto confirming that the invoice answer was copied](docs/screenshots/conversation-copy.png)
+![Pi Accanto confirming that the scripted response was copied](docs/screenshots/conversation-copy.png)
 
 When you browse another tab, a contextual suggestion offers **Chat about this tab**.
 The composer continues naming the original page until you explicitly switch.
@@ -78,7 +82,8 @@ This narrow-layout capture uses the offline scripted provider.
 
 ## Try it
 
-Run `npm ci` and `npm run build` to create the extension bundle.
+Use Node.js 22 or later. Run `npm ci` and `npm run build` to create the extension
+bundle, including dependency license notices. Install the entire `dist/` directory.
 
 ### Model setup
 
@@ -95,8 +100,10 @@ stop a reply before changing its model. Keys stay in `chrome.storage.session`,
 are not bundled or written to conversation history, and must be entered again
 after a browser restart. Changing the endpoint requires entering its key;
 Pi does not reuse the previous endpoint's session key. Failed connection checks
-leave the saved settings intact. Existing installations retain their original
-local endpoint/model defaults until changed.
+leave the saved settings intact. Fresh installations have no preconfigured
+model endpoint or model ID and do not contact a personal LAN server. Explicitly
+saved connections survive upgrades; installations that relied on the old implicit
+endpoint must enter their connection once. Unscoped legacy keys are not reused.
 
 Your server must accept requests from the unpacked extension's
 `chrome-extension://<extension-id>` origin. Find its ID at `chrome://extensions`;
@@ -438,108 +445,52 @@ still access the network through explicitly invoked search/source tools.
 
 ```powershell
 npm ci
-npm run build
 npx playwright install chromium
-npm test
-npm run test:pdf
-npm run test:conversations
+npm run build
+npm run test:fixtures
 ```
 
-`npm test` loads the bundled MV3 extension in an isolated Chromium profile with
-the scripted provider. It checks browser tool execution, password exclusion,
-exclusive ownership, attached-tab read/edit follow-ups while browsing elsewhere,
-explicit target changes, permission-independent **New chat** and its detached
-reload state, exact Markdown copying, unavailable targets, reload, and
-browser-restart persistence/invalidation. It also checks the actual 16px composer
-and response sizes. It renders an
-extension tab at sidebar width and grants the test copy loopback access.
-It also checks custom endpoint/model configuration against a local HTTP/SSE
-fixture, unknown-model rejection, prevention of session-key reuse at a different
-endpoint, actual chat request routing, settings persistence and session-key
-expiry after browser restart. Fixture credentials and replies are synthetic.
+On Linux, install browser system dependencies with
+`npx playwright install --with-deps chromium`. The GitHub Actions fixture job
+uses Node 22 and the Playwright-pinned full Chromium in headless mode. It needs
+no model/search secrets. Test output defaults to ignored `test-results/`.
 
-`npm run test:pdf` uses isolated headless Chrome for Testing 156 profiles and
-a loopback permission in the test copy. It checks asymmetric multipage text,
-page selection and limits, local-file binding, scanned/empty pages, HTTP/login/
-redirect/size errors, cancellation/recovery, navigation during extraction,
-embedded-viewer guidance and HTML regression controls. PDF artifacts go under
-`../.amp/in/artifacts/pi-accanto-pdf/`.
+| Suite | What it checks |
+| --- | --- |
+| `npm test` | Fresh-install setup, page reading/editing, copy, attachment/task boundaries, handoff, history, loopback model request routing, credential isolation and restart behavior. |
+| `npm run test:pdf` | Asymmetric PDF extraction, limits/later pages, local-file permission toggles, attachment guards, fetch errors, Stop/recovery and HTML controls. |
+| `npm run test:conversations` | Simultaneous Code Mode workers, independent histories/stores/source approvals, Stop/handoff isolation, picker and reload. |
+| `npm run test:research` | Fixture-only provider protocols/errors, exact-source approval, page search, checked calculations, sandbox limits, partial failures, Stop/recovery and task isolation. Unexpected external HTTP requests are blocked and fail this suite. |
 
-`npm run test:conversations` starts two independent tab-bound conversations and
-holds both Code Mode workers at a fixture search request simultaneously. It
-checks Stop/handoff isolation, separate histories and sandbox values, per-task
-source approvals, saved-conversation selection, Open in tab, and reload. Fixture
-results do not consume provider quota. It also captures the 320px layout.
-Evidence is under `../.amp/in/artifacts/pi-accanto-conversations/`.
+These tests use the actual built extension in disposable browser profiles.
+Scripted providers and synthetic HTTP/SSE responses verify behavior without
+claiming successful inference or live provider availability. Test copies grant
+loopback access so automation can inspect fixtures; they do not prove native
+permission dialogs or toolbar gestures.
 
-`npm run test:sidebar` runs the actual Windows Chrome sidebar. It uses native
-mouse input on Chrome's Extensions menu and toolbar action, then attaches to
-the real `SIDE_PANEL` target through CDP. The shipped manifest is unmodified;
-the test asserts the action granted `activeTab` access. It enters the credential
-from `%USERPROFILE%\.pi\agent\models.json` without logging it and attempts live
-inference, then checks inspection, focused editing without submission, password
-exclusion, Stop/recovery, and reload with the real model. It also runs the
-scripted browser-tool controls independently. Before browsing other tabs, it
-uses **Open in tab** to transfer the conversation and records that transition
-separately: hidden tab-specific sidebars can pause. Multi-tab cases then run in
-that ordinary agent tab and check follow-up recall and fresh excerpts from the
-original tab, a site-access request
-and real Chrome confirmation for optional all-site access, persistence on reload,
-revocation and restoration of site-by-site access, exclusion of prior tasks from actual model requests, fresh context
-after **New chat**, and rejection of closed targets before model invocation.
-The native sidebar also checks copying a real-model answer to the system clipboard.
-PDF cases use the real built-in viewer and the remembered site grant, ask the live model
-to combine facts across three pages, verify online and local-file answers,
-preserve the PDF attachment while another tab is active, and check honest
-answers for image-only pages and fetch denial.
-It exits nonzero if live inference
-fails, even when scripted controls pass. Screenshots and the response report
-are saved under
-`../.amp/in/artifacts/pi-browser-prototype/`.
+### Optional live verification
 
-The native test currently expects Chrome for Testing 156.0.8078.74, matching the
-installed Chrome version, at
-`../.amp/in/chrome-testing/chrome/win64-156.0.8078.74/chrome-win64/chrome.exe`.
-Install it with `npx @puppeteer/browsers install chrome@156.0.8078.74 --path ../.amp/in/chrome-testing`.
-Both tests use disposable browser profiles and fixture servers and clean them up.
+`npm run test:research:live` adds real-model questions/tool selection, actual
+Exa/MDN requests and invalid-key TinyFish/Brave checks. It requires explicit
+`ACCANTO_MODEL_ENDPOINT`, `ACCANTO_MODEL_ID` and `ACCANTO_MODEL_API_KEY` process
+settings, and never reads a personal Pi config file. Its disposable extension
+uses a documented test-only model relay; the shipped extension does not.
 
-`npm run test:research` exercises the built MV3 extension at 380px/DPR 2:
-HTML search beyond 4,000 characters, field exclusion, independently checked
-$90.75 and $84.55 calculations from changing demo inputs, implicit page questions
-and updated values in actual model requests, unapproved tool rejection, missing
-global APIs, infinite-loop and memory limits, partial source failure, Stop during
-a pending source call, recovery, two-panel handoff during a read, and task/approval isolation. Provider HTTP 422
-with an invalid key is checked against the real Brave endpoint; TinyFish's real
-invalid-key response is also recorded. Successful keyed search responses, empty
-results and HTTP 429 use explicit fixtures: no authenticated TinyFish or Brave
-success is claimed without a supplied key. The test attempts a real keyless Exa
-search from the extension origin and records its outcome separately from
-protocol fixtures. Shared-limit metadata, RPC/tool errors and unrecognized
-content must produce browser fallback, not fabricated results. A separately
-approved MDN read uses the actual public source. The real local model chooses
-page-search tools and writes calculations; because the disposable extension ID
-is outside its server's Origin allowlist, that part uses a test-only Node relay.
-The shipped extension has no relay and retains direct transport. A separate
-Chrome 156 `SIDE_PANEL` check opened the canonical extension through a temporary
-test button, used direct model transport, and executed a model-written Code Mode
-calculation to $90.75. That evidence is separate from `test:sidebar`, which also
-exercises native opening and site permissions.
-Artifacts and the report are under `../.amp/in/artifacts/pi-accanto-research/`.
-The report is saved on failures as well as successes and includes model request
-bodies, response streams, and the sidebar transcript; failed runs also capture
-a screenshot. Authorization headers are not recorded. The live web scenario
-uses an explicit fixture search target and requires a new search in that task
-before approving a result and checking its full text and citation.
-An additional one-off authenticated TinyFish check used the same built extension
-and its production search tool against the real API, without response fixtures
-or a relay. It returned six parsed results including the MDN map reference and
-verified session-only key handling and explicit forgetting. Its sanitized report
-is `tinyfish-authenticated-report.json` in the same artifacts directory. The
-ordinary suite does not automatically load a personal TinyFish credential or
-consume its quota; its TinyFish success cases remain synthetic fixtures.
-Native menu automation requires an interactive Windows desktop. Earlier menu-driver
-failures before sidebar initialization were also reproduced on the untouched
-baseline; they are recorded separately from successful direct-side-panel checks.
+`npm run test:sidebar` uses the same explicit connection settings with direct
+transport in an actual Chrome `SIDE_PANEL`. It preserves toolbar/activeTab,
+native permission, read/edit/copy, PDF and recovery assertions. It requires an
+unlocked interactive Windows desktop. Set `ACCANTO_CHROME_EXECUTABLE` for a
+specific browser executable instead of depending on a machine-specific path.
+Native opening has failed on a locked desktop on both changed and unchanged
+code; that is not a passing native rerun.
+
+Earlier actual Chrome 156 checks exercised direct-model Code Mode, Exa results,
+authenticated TinyFish search, source approval and permission restoration.
+Those historical checks are separate from fixture results. Exa shared quotas
+can fail; authenticated Brave success remains unverified. Live reports can
+contain prompts, source text and screenshots: review before sharing.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for setup and test boundaries and
+[PRIVACY.md](PRIVACY.md) for data handling.
 
 The Beside mark pairs your page with its companion panel. Editable artwork
 lives in `assets/beside.svg`; run `node generate-icons.mjs` to regenerate Chrome’s
@@ -550,23 +501,21 @@ Unattended execution while the panel is closed and recovery of an action
 interrupted by closing the browser are not promised. Edge has not been tested.
 Code Mode / QuickJS WASM is bundled locally; no remote sandbox is used.
 
-## Public release preparation
+## License and early-release limits
 
-The extension works locally, but the repository still needs these steps before
-a public open-source release:
+Original code and Beside artwork are [MIT licensed](LICENSE). Keep bundled
+dependency notices when distributing `dist/`; see
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). The npm `private` flag prevents
+accidental npm publication; it does not change the source license.
 
-- Choose and add a project license. No project license is currently included;
-  dependency licenses do not license this repository's original code or artwork.
-- Broaden model compatibility checks and make profile capabilities/token limits
-  configurable for servers that differ from the current adapter profile.
-- Make the full test setup portable. The native sidebar suite currently needs
-  an interactive Windows desktop, a specific Chrome build and a configured local
-  model credential; it is not a general CI setup.
-- Review tracked assets and Git history before changing repository visibility.
-  Removing machine-specific setup notes from this README does not remove them
-  from earlier commits. Review third-party license/notice requirements for
-  bundled dependencies as part of distribution.
+This is an early release. Model profile capabilities/token limits remain fixed,
+Edge is unverified, native UI tests require interactive Windows, and unattended
+execution is not promised. Search providers can reject requests or rate-limit.
+Repository CI results should be reviewed before a release; local fixture passes
+are not evidence that a hosted workflow has run.
 
-Contributions should describe the user-visible behavior and validation. Use
-disposable pages/profiles for browser tests, keep credentials out of issues and
-commits, and distinguish real provider/model checks from fixture-based checks.
+Page excerpts, tool results and history may contain sensitive information.
+Read [PRIVACY.md](PRIVACY.md), and do not commit credentials or live artifacts.
+Changing repository visibility or rewriting published history requires a
+separate maintainer decision; historical machine-specific notes are not removed
+by updating the current source.

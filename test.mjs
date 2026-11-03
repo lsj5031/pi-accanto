@@ -4,8 +4,9 @@ import { mkdtemp, rm, mkdir, cp, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import { chromium } from 'playwright';
+import { browserOptions, artifactDirectory } from './test/browser.mjs';
 
-const artifacts = resolve('../.amp/in/artifacts/pi-browser-prototype');
+const artifacts = artifactDirectory('browser');
 await mkdir(artifacts, { recursive: true });
 const profile = await mkdtemp(`${tmpdir()}/pi-tab-test-`);
 const extension = resolve(profile, 'extension');
@@ -39,12 +40,11 @@ await new Promise((ready) => server.listen(0, '127.0.0.1', ready));
 let browser;
 try {
   browser = await chromium.launchPersistentContext(profile, {
-    channel: 'chromium', headless: false,
+    ...browserOptions,
     args: [`--disable-extensions-except=${extension}`, `--load-extension=${extension}`],
     viewport: { width: 1100, height: 850 },
   });
   const worker = browser.serviceWorkers()[0] ?? await browser.waitForEvent('serviceworker');
-  await worker.evaluate(() => chrome.storage.local.set({ mode: 'scripted' }));
   const id = new URL(worker.url()).host;
   const fixture = await browser.newPage();
   await fixture.goto(`http://127.0.0.1:${server.address().port}`);
@@ -54,6 +54,19 @@ try {
   const panel = await nextPage;
   panel.on('pageerror', (error) => console.error('PANEL ERROR', error));
   panel.on('console', (msg) => { if (msg.type() === 'error') console.error('PANEL CONSOLE', msg.text()); });
+  await panel.waitForFunction(() => document.getElementById('status')?.textContent.includes('Connect your model'));
+  assert.equal(await panel.locator('#model-endpoint').inputValue(), '');
+  assert.equal(await panel.locator('#model-id').inputValue(), '');
+  assert.equal(await panel.locator('#send').isDisabled(), true);
+  await worker.evaluate(() => chrome.storage.session.set({ apiKey: 'unscoped-fixture-key' }));
+  await panel.reload();
+  await panel.waitForFunction(() => document.getElementById('status')?.textContent.includes('Connect your model'));
+  assert.equal(await panel.locator('#send').isDisabled(), true, 'Unscoped legacy credentials cannot select a server');
+  await panel.setViewportSize({ width: 320, height: 640 });
+  await panel.screenshot({ path: resolve(artifacts, 'fresh-install.png') });
+  assert.equal(await panel.evaluate(() => document.documentElement.scrollWidth), 320);
+  await worker.evaluate(async () => { await chrome.storage.session.remove('apiKey'); await chrome.storage.local.set({ mode: 'scripted' }); });
+  await panel.reload();
   await panel.setViewportSize({ width: 420, height: 850 });
   await panel.emulateMedia({ colorScheme: 'dark', reducedMotion: 'reduce' });
   await panel.waitForFunction(() => document.getElementById('status')?.textContent.includes('Ready'));
@@ -194,7 +207,7 @@ try {
   const conversationUrl = panel.url();
   await browser.close();
   browser = await chromium.launchPersistentContext(profile, {
-    channel: 'chromium', headless: false,
+    ...browserOptions,
     args: [`--disable-extensions-except=${extension}`, `--load-extension=${extension}`],
     viewport: { width: 420, height: 850 },
   });
@@ -263,7 +276,7 @@ try {
   assert.equal(await reopened.evaluate(() => document.documentElement.scrollHeight), 640);
   await browser.close();
   browser = await chromium.launchPersistentContext(profile, {
-    channel: 'chromium', headless: false,
+    ...browserOptions,
     args: [`--disable-extensions-except=${extension}`, `--load-extension=${extension}`],
     viewport: { width: 420, height: 850 },
   });

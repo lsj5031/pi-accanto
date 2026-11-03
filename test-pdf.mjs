@@ -7,8 +7,9 @@ import { pathToFileURL } from 'node:url';
 import { chromium } from 'playwright';
 import { build } from 'esbuild';
 import { pdf, reportPdf } from './test/pdf-fixtures.mjs';
+import { browserOptions, artifactDirectory } from './test/browser.mjs';
 
-const artifacts = resolve('../.amp/in/artifacts/pi-accanto-pdf');
+const artifacts = artifactDirectory('pdf');
 await mkdir(artifacts, { recursive: true });
 const profile = await mkdtemp(`${tmpdir()}/pi-pdf-test-`);
 const extension = resolve(profile, 'extension');
@@ -42,8 +43,8 @@ await new Promise((ready, reject) => { server.once('error', reject); server.list
 let browser;
 try {
   browser = await chromium.launchPersistentContext(profile, {
-    executablePath: resolve('../.amp/in/chrome-testing/chrome/win64-156.0.8078.74/chrome-win64/chrome.exe'),
-    headless: true, args: [`--disable-extensions-except=${extension}`, `--load-extension=${extension}`],
+    ...browserOptions,
+    args: [`--disable-extensions-except=${extension}`, `--load-extension=${extension}`],
     viewport: { width: 420, height: 850 },
   });
   let worker = browser.serviceWorkers()[0] ?? await browser.waitForEvent('serviceworker');
@@ -208,7 +209,7 @@ try {
   assert.match(await panel.locator('#status').textContent(), /unsupported|toolbar action/);
   assert.deepEqual(errors, []);
   await writeFile(resolve(artifacts, 'pdf-report.json'), JSON.stringify({ chrome: browser.browser().version(), multipage: parsed, limits: { pageCount: many.pages.length, nextPage: many.nextPage, denseCharacters: dense.pages[0].text.length }, passed: ['extensionless PDF', 'page order', 'local file', 'local file navigation guard', 'stable attachment and reload', 'read-only PDFs', 'page and character limits', 'later pages', 'raster-only and empty', '403', 'login HTML', 'redirect rejection', 'size cap', 'Stop and recovery', 'navigation during fetch', 'embedded viewer notice', 'unsupported URL'] }, null, 2));
-  console.log('PASS: Chrome 156 PDF extraction, page selection/bounds, local files, attachment guards, no-text honesty, fetch errors, Stop/recovery and HTML controls.');
+  console.log('PASS: Chromium PDF extraction, page selection/bounds, local files, attachment guards, no-text honesty, fetch errors, Stop/recovery and HTML controls.');
 } finally {
   await browser?.close();
   server.closeAllConnections();

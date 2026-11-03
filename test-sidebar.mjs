@@ -1,16 +1,19 @@
 import { chromium } from 'playwright';
 import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
-import { tmpdir, homedir } from 'node:os';
+import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { execFileSync } from 'node:child_process';
 import { createServer } from 'node:http';
 import assert from 'node:assert/strict';
 import { pdf, reportPdf } from './test/pdf-fixtures.mjs';
+import { browserOptions, artifactDirectory, liveModelSettings } from './test/browser.mjs';
 
-const artifacts = resolve('../.amp/in/artifacts/pi-browser-prototype');
+if (process.platform !== 'win32') throw new Error('The native sidebar suite requires an unlocked interactive Windows desktop. Use npm run test:fixtures for portable checks.');
+const model = liveModelSettings();
+const artifacts = artifactDirectory('sidebar');
 await mkdir(artifacts, { recursive: true });
-const pdfArtifacts = resolve('../.amp/in/artifacts/pi-accanto-pdf');
+const pdfArtifacts = artifactDirectory('sidebar-pdf');
 await mkdir(pdfArtifacts, { recursive: true });
 const profile = await mkdtemp(`${tmpdir()}/pi-sidebar-`);
 let denyPdf = false;
@@ -36,7 +39,7 @@ let browser;
 let remote;
 try {
   browser = await chromium.launchPersistentContext(profile, {
-    executablePath: resolve('../.amp/in/chrome-testing/chrome/win64-156.0.8078.74/chrome-win64/chrome.exe'),
+    ...browserOptions,
     headless: false,
     args: [`--disable-extensions-except=${resolve('dist')}`, `--load-extension=${resolve('dist')}`, '--force-renderer-accessibility', '--force-device-scale-factor=1', '--remote-debugging-port=0'],
     viewport: null,
@@ -70,8 +73,7 @@ try {
   await panel.waitForFunction(() => document.getElementById('status')?.textContent.includes('Connect your model'));
   await panel.screenshot({ path: resolve(artifacts, 'live-settings.png') });
   await panel.screenshot({ path: resolve(artifacts, 'conversation-setup.png') });
-  const config = JSON.parse(await readFile(resolve(homedir(), '.pi/agent/models.json'), 'utf8'));
-  const credential = config.providers['local-gguf'].apiKey;
+  const credential = model.apiKey;
   assert.equal(typeof credential, 'string');
   const requests = [];
   const responses = [];
@@ -95,8 +97,14 @@ try {
     });
   }
   observe(panel);
+  await panel.locator('#model-endpoint').fill(model.endpoint);
+  await panel.locator('#model-id').fill(model.modelId);
   await panel.locator('#api-key').fill(credential);
-  await Promise.all([panel.waitForEvent('load'), panel.locator('#connect').evaluate((button) => button.click())]);
+  const needsModelPermission = !await worker.evaluate(origin => chrome.permissions.contains({ origins: [origin] }), `${new URL(model.endpoint).origin}/*`);
+  const connected = panel.waitForEvent('load');
+  await panel.locator('#connect').evaluate((button) => button.click());
+  if (needsModelPermission) native('allow-site');
+  await connected;
   await panel.waitForFunction(() => document.getElementById('status')?.textContent.includes('Ready'));
   await panel.waitForFunction(() => document.getElementById('send')?.disabled === false);
   assert.match(await panel.locator('#connection-status').textContent(), /Credential available/);
@@ -140,14 +148,16 @@ try {
       const start = Date.now();
       await panel.locator('#prompt').fill(prompt);
       await panel.locator('#send').evaluate((button) => button.click());
-      await panel.waitForFunction(() => !document.getElementById('send')?.disabled, null, { timeout: 150000 });
-      const status = await panel.locator('#status').innerText();
-      if (!status.includes('Reply complete')) {
-        await writeFile(resolve(artifacts, 'sidebar-failure.json'), JSON.stringify({ prompt, status, requests, responses, transcript: await panel.locator('#transcript').textContent() }, null, 2));
+      try {
+        await panel.waitForFunction(() => !document.getElementById('send')?.disabled, null, { timeout: 150000 });
+        assert.match(await panel.locator('#status').innerText(), /Reply complete/);
+        return { answer: await panel.locator('article.assistant').last().innerText(), elapsedMs: Date.now() - start };
+      } catch (error) {
+        const status = await panel.locator('#status').innerText();
+        await writeFile(resolve(artifacts, 'sidebar-failure.json'), JSON.stringify({ prompt, error: String(error), status, requests, responses, transcript: await panel.locator('#transcript').textContent() }, null, 2));
         await panel.screenshot({ path: resolve(artifacts, 'sidebar-failure.png') });
+        throw error;
       }
-      assert.match(status, /Reply complete/);
-      return { answer: await panel.locator('article.assistant').last().innerText(), elapsedMs: Date.now() - start };
     }
     for (const item of [
       { invoice: 'NZ-428', text: 'Invoice NZ-428 has 5 items at $12.40 each and delivery of $3.35.', total: '65.35' },
@@ -253,7 +263,7 @@ try {
     await panel.locator('#all-sites').click();
     native('allow-site');
     await panel.waitForFunction(() => document.getElementById('all-sites').textContent === 'Allow all websites' && !document.getElementById('all-sites').disabled);
-    assert.equal(await panel.evaluate(() => chrome.permissions.contains({ origins: ['http://192.168.1.111/*', 'https://mcp.exa.ai/*'] })), true, 'Revoking broad page access must retain model/search service access');
+    assert.equal(await panel.evaluate(origin => chrome.permissions.contains({ origins: [origin, 'https://mcp.exa.ai/*'] }), `${new URL(model.endpoint).origin}/*`), true, 'Revoking broad page access must retain model/search service access');
     await panel.locator('#connection').evaluate(element => { element.open = false; });
     await panel.waitForFunction(() => !document.getElementById('site-access').hidden);
     report.allSiteAccess = { realChromeApproval: true, restoredAfterReload: true, revoked: true };
