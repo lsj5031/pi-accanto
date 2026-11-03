@@ -21,3 +21,9 @@ jobs:
       - run: npx playwright install --with-deps chromium
       - run: npm run build
       - run: npm run test:fixtures
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: fixture-failure-evidence
+          path: test-results/
+          retention-days: 7

@@ -87,9 +87,10 @@ try {
   let a = await open(page);
   await a.locator('#connect-model').waitFor();
   await page.screenshot({ path: resolve(artifacts, 'first-use.png') });
-  const settingsOpened = browser.waitForEvent('page');
-  await a.locator('#connect-model').click();
-  const settings = await settingsOpened;
+  const [, settings] = await Promise.all([
+    a.locator('#connect-model').click(),
+    browser.waitForEvent('page'),
+  ]);
   await settings.waitForFunction(() => document.body.dataset.settings === 'true');
   assert.ok(settings.url().startsWith(`${base}/panel.html?settings=1`));
   assert.equal(await a.locator('#panel-owner').isVisible(), false, 'Settings must not take conversation ownership');
