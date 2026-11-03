@@ -28,6 +28,7 @@ answers reliable or page content trustworthy.
 ## What stays on this device
 
 - Chrome local storage holds model API format, endpoint/model ID and the conversation catalog.
+  It also remembers which websites you hid the companion on.
 - Per-conversation IndexedDB stores chat messages, inspected content, tool results,
   source excerpts, generated scripts and durable task state. These are persistent
   data, including content read from private pages. They are not encrypted by Pi
@@ -45,11 +46,20 @@ answers reliable or page content trustworthy.
 Closing a tab/panel or choosing **New chat** does not erase saved history. Task
 boundaries limit model context; they are not data-deletion controls.
 
+The companion appears on granted HTTP(S) websites. Its idle button does not load
+an agent or read page text. Opening it creates an extension-owned frame verified
+against the isolated content script's exact window. Model/search keys are entered
+in a separate extension tab; no credential or agent-tool API is exposed to the
+website. Minimizing leaves the frame and any current reply running. Navigating
+or reloading the page destroys that runtime; use **Open in a tab** for longer work.
+
 ## Removing access and data
 
 - Revoke host permissions from Chrome's extension details/site-access settings.
   **Remove all-site access** returns to narrower service/site grants and can ask
   for confirmation to keep model/search services working.
+- **Hide on this site** removes the companion from that origin without revoking
+  its Chrome host grant or erasing history. Restore hidden companions in Settings.
 - Use **Forget key** for the selected optional search provider, or restart the
   browser to end session credentials. Rotate/revoke a compromised key at its
   provider; clearing a browser copy does not revoke it remotely.

@@ -23,7 +23,7 @@ Actions runs the same commands. Build/install steps need network access; fixture
 tests do not require a live search or model service.
 
 Run an individual suite with `npm test`, `npm run test:pdf`,
-`npm run test:conversations` or `npm run test:research`. Add `-- --headed` to see
+`npm run test:conversations`, `npm run test:research` or `npm run test:companion`. Add `-- --headed` to see
 its browser. Set `ACCANTO_CHROME_EXECUTABLE` to an absolute browser executable
 path for a different Chromium build; CI uses the Playwright-pinned version instead.
 Artifacts default to ignored `test-results/`; `ACCANTO_ARTIFACT_DIR` overrides
@@ -46,8 +46,8 @@ Exa quota, external network availability and model output make it unsuitable as
 a deterministic CI gate. Authenticated TinyFish/Brave service success is not
 established by their synthetic fixture responses.
 
-`npm run test:sidebar` uses the same explicit model environment settings but
-direct model transport and actual native Chrome permission/sidebar controls.
+`npm run test:native` uses the same explicit model environment settings but
+direct model transport and actual native Chrome permission/toolbar controls.
 It requires Windows with an **unlocked interactive desktop**; it always opens a
 visible browser. Set `ACCANTO_CHROME_EXECUTABLE` if the Playwright Chromium build
 does not match the version you intend to verify. Native clipboard/menu behavior
@@ -62,6 +62,9 @@ do not silently pass or skip assertions.
   extraction, cancellation and honest partial failures.
 - Keep model/search keys out of persistent storage and artifacts. Broader page
   permissions must not remove exact-source approvals.
+- The public companion iframe must authenticate its exact document through the
+  isolated host before loading agent code or storage. Page messages must never
+  become a tool/credential bridge. Credentials are entered in extension tabs.
 - Code Mode may compose approved reading/search tools; editing remains model-only
   and there is no automatic submission or arbitrary navigation.
 - Verify representative rendered states for visual changes and describe whether

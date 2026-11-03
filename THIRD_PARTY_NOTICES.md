@@ -1,16 +1,16 @@
 # Third-party notices
 
-Pi Accanto's original code and Beside SVG/derived PNG artwork are covered by
+Pi Accanto's original code and companion SVG/derived PNG artwork are covered by
 [MIT](LICENSE). Dependencies retain their own licenses. Browser UI shown in
 documentation screenshots is not part of the original artwork license.
 
 `npm run build` inventories the packages actually included in both JavaScript
-bundles. It copies their license/notice files into `dist/third-party/` and writes
+bundles and the locally copied Basecoat/Tailwind CSS distribution. It copies their license/notice files into `dist/third-party/` and writes
 an index with versions and declared licenses. Keep that directory, `dist/licenses/`,
 this notice and `LICENSE` when distributing the extension. PDF font/CMap license files are
 also retained beside those resources.
 
-The current bundles use MIT-licensed Pi packages, TypeBox, partial-json, marked,
+The current bundles use MIT-licensed Basecoat, Tailwind CSS, Pi packages, TypeBox, partial-json, marked,
 quickjs-wasi and Anthropic SDK, Apache-2.0-licensed OpenAI SDK, Google Gen AI SDK
 and PDF.js, and DOMPurify under
 its offered Apache-2.0 alternative (the package also offers MPL-2.0). PDF.js's

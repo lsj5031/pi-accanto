@@ -15,7 +15,7 @@ const profile = await mkdtemp(`${tmpdir()}/pi-pdf-test-`);
 const extension = resolve(profile, 'extension');
 await cp('dist', extension, { recursive: true });
 const manifest = JSON.parse(await readFile(resolve(extension, 'manifest.json'), 'utf8'));
-// This suite tests reading and UI. test:sidebar separately proves real activeTab permission.
+// This suite tests reading and UI. test:native separately proves real activeTab permission.
 manifest.host_permissions.push('http://127.0.0.1/*');
 await writeFile(resolve(extension, 'manifest.json'), JSON.stringify(manifest));
 await build({ entryPoints: ['pdf-reader.js'], bundle: true, format: 'esm', platform: 'browser', outfile: resolve(extension, 'reader-test.js') });

@@ -117,12 +117,12 @@ export function createResearchTools({ inTarget, sources, showSources, showSearch
         } catch (error) {
           context.abortSignal.throwIfAborted();
           showSearchFallback(query, `${provider} unavailable: ${error.message}`);
-          throw new Error(`${error.message} Choose Open search in browser in the sidebar. No provider was switched and no full sources were read.`);
+          throw new Error(`${error.message} Choose Open search in browser in Accanto. No provider was switched and no full sources were read.`);
         }
         context.abortSignal.throwIfAborted();
         for (const item of results) if (!sources.has(item.url) && sources.size < 30) sources.set(item.url, { ...item, approved: false });
         showSources();
-        return textResult({ provider, query, results, evidence: 'Search snippets only. Full source text has not been read. User must allow a source in the sidebar before read_web_source can fetch it. Up to 30 source approvals per task; start a new task for more. Empty results mean no matches returned.' });
+        return textResult({ provider, query, results, evidence: 'Search snippets only. Full source text has not been read. User must allow a source in Accanto before read_web_source can fetch it. Up to 30 source approvals per task; start a new task for more. Empty results mean no matches returned.' });
       },
     }),
     defineTool({ name: 'read_web_source', description: 'Fetch an exact search-result URL explicitly allowed by the user in this task. Does not attach or navigate a tab. Reads bounded public HTML/text without cookies. Redirects and PDFs are unavailable; do not treat failures as evidence.', parameters: Type.Object({ url: Type.String({ maxLength: 4000 }) }),

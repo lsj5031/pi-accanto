@@ -109,6 +109,7 @@ try {
   await idle(b);
   assert.match(await b.locator('article.toolResult').last().textContent(), /ONLY-B/);
   assert.doesNotMatch(await b.locator('#transcript').textContent(), /ONLY-A|ALPHA/);
+  await duplicate.locator('#history-menu > summary').click();
   await duplicate.locator('#new-conversation').click();
   await idle(duplicate);
   assert.match(await send(duplicate, 'Code: text(load("marker") ?? "EMPTY-A");'), /EMPTY-A/);
@@ -119,13 +120,17 @@ try {
   await duplicate.waitForFunction(() => document.querySelector('#source-list button').disabled);
   assert.match(await send(b, `Read source: ${origin}/source`), /Source not allowed/);
   assert.match(await send(duplicate, `Read source: ${origin}/source`), /713/);
-  await duplicate.locator('#conversation').selectOption(idB);
+  await duplicate.locator('#history-menu > summary').click();
+  assert.equal(await duplicate.locator(`#conversation button[value="${idA}"]`).getAttribute('aria-current'), 'true');
+  await duplicate.locator(`#conversation button[value="${idB}"]`).click();
   await duplicate.locator('#panel-owner').waitFor();
   assert.equal(await b.locator('#send').isEnabled(), true, 'Selecting an owned conversation must not steal it');
-  await duplicate.locator('#conversation').selectOption(idA);
+  await duplicate.locator('#history-menu > summary').click();
+  await duplicate.locator(`#conversation button[value="${idA}"]`).click();
   await ready(duplicate);
   assert.doesNotMatch(await duplicate.locator('#transcript').textContent(), /ONLY-B|BETA/);
   const opened = browser.waitForEvent('page');
+  await b.locator('#history-menu > summary').click();
   await b.locator('#open-conversation').click();
   const agentTab = await opened;
   await ready(agentTab);

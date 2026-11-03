@@ -13,10 +13,11 @@ there is no separate Pi process or browser-control server to install.
 Early release · [MIT license](LICENSE) · [Privacy](PRIVACY.md) ·
 [Contributing](CONTRIBUTING.md)
 
-![Pi Accanto reading a demo invoice and calculating its total with Code Mode](docs/screenshots/conversation-read.png)
+![The Accanto companion reading the demo invoice and showing its calculated total](docs/screenshots/companion-answer.png)
 
-Actual Chrome sidebar, using a real model on the included demo invoice.
-The total is calculated from the page's inputs: 3 × $27.50 + $8.25 = $90.75.
+Actual extension on the included demo invoice, driven by an automated model-response
+fixture. Code Mode reads the page and calculates 3 × $27.50 + $8.25 = $90.75.
+The floating window leaves your page at its full width; minimize it to a small companion button.
 
 ## What can I ask it?
 
@@ -35,13 +36,6 @@ Pi can search later sections when the initial excerpt isn't enough.
 
 Text edits stay in the field for you to review. Pi never clicks Submit.
 Completed responses have a **Copy** button.
-
-<details>
-<summary>See Copy confirmation</summary>
-
-![Pi Accanto confirming that the real model's invoice answer was copied](docs/screenshots/conversation-copy.png)
-
-</details>
 
 ## Get started
 
@@ -71,10 +65,11 @@ source, rebuild, and click **Reload** on Pi Accanto at `chrome://extensions`.
 
 ### 2. Connect your model
 
-Open the control at the top right of Pi Accanto's header. On a fresh install,
-it says **Set up model**.
+Choose **Connect model** on first use, or the **Settings** icon in the header.
+The floating companion opens settings in a separate extension tab, so API keys
+are entered outside the website.
 
-1. Leave **Mode** set to **AI model**, then choose your **Model API**.
+1. Choose your **Model API**.
 2. Use the provider's default **API base URL**, or enter your own server's URL.
 3. Enter its exact **Model ID** and **API key**.
 4. Click **Connect** and accept Chrome's request to access that server.
@@ -92,7 +87,7 @@ Connect checks the server's model catalog (`/models`, Anthropic's `/v1/models/{i
 or Gemini's `/models/{id}`); it does not send a chat message.
 There is no preset model or bundled key. Your chosen provider may charge for use.
 
-![Fresh installation showing the model URL, model ID and API key fields](docs/screenshots/model-setup.png)
+![The companion's first-use screen with one Connect model action](docs/screenshots/companion-first-use.png)
 
 The API format, URL and model ID are saved on this device. **API keys last only for the
 browser session**: enter them again after restarting Chrome. Switching to a
@@ -106,16 +101,42 @@ Accept Chrome's permission prompt, then send a question.
 Chrome remembers site access; you don't need to click the extension icon before
 every read. For fewer prompts, open the header's model settings and choose
 **Website access → Allow all websites**. This is optional and can be removed there.
-Only the attached page is read, even with all-site access.
+Only the attached page is read, even with all-site access. Once a website is
+allowed, a small **Accanto companion** appears in the corner on future visits.
+Click it to chat, drag the grip at the top to move it, and use the bottom-right
+corner to resize. The **−** button or **Escape** minimizes it without ending a reply.
+Right-click the companion button to **Hide on this site**; restore it from
+**Settings → Companion → Restore hidden companions**.
 
-The page named above the composer is the one Pi is using. Follow-ups stay with
-it while you browse elsewhere. Choose **Chat about this tab** to switch pages,
-or **New chat** to start fresh. After a browser restart, reattach the page;
-saved conversations remain available in the conversation picker.
+The chip inside the composer identifies the page Pi is using. Open it to choose
+**Web only**, or use the **History** icon for **New chat**, saved conversations and
+**Open in a tab**. The toolbar icon opens the floating companion on webpages,
+including when you've hidden it on that site. That click grants temporary page
+access; automatic appearance on future visits needs a remembered website grant.
+Right-click the companion and choose **Open in a tab** for more room. PDFs,
+Chrome pages and documents that cannot host the companion open Accanto in a
+separate browser tab, keeping the original page attached. Chrome pages cannot
+be read; you can still use web-only chat. Accanto does not use Chrome's sidebar.
+
+Navigating or reloading a website closes that page's agent. Saved history returns
+when you reopen the companion; interrupted replies do not resume automatically.
+For a task that should keep running while you navigate, use **History → Open in a tab**
+before starting the reply. After a browser restart, reattach the page explicitly.
+
+![History in the floating companion, with a checkmark on the current chat, New chat and Open in a tab](docs/screenshots/companion-history.png)
+
+History shows your saved chats directly. The highlighted row and checkmark identify
+the current conversation; choose another row to switch. Longer histories scroll
+inside the menu, keeping **New chat** and **Open in a tab** in place.
+
+![The floating companion's composer expanded to show a multiline draft](docs/screenshots/companion-composer.png)
+
+The composer grows as you type, then scrolls for longer drafts. Sending clears it
+immediately so you can start your next message while Pi replies.
 
 ## Set up web search
 
-**Search settings are under Web search, below the page controls.** Expand it to
+**Search settings are under Settings → Web search.** Expand it to
 choose a provider. Search is separate from the AI model connection.
 
 | Provider | What you need |
@@ -131,7 +152,7 @@ just like the model key. **Forget key** removes the selected key and returns
 search to Exa. Saving a key selects the provider; the next search checks its
 credentials and quota. Pi never silently switches providers.
 
-Choose **Web research** to start a conversation without reading the current tab,
+Choose **Web only** from the page-context chip to start a task without reading the current tab,
 or ask for web research within an existing page chat. Only the deliberate search
 query is sent to the search provider.
 
@@ -148,8 +169,8 @@ you want to discuss, choose **New chat**, allow the site if needed, and send a m
 
 Code Mode lets the model write and run a small JavaScript program to read
 approved page/search evidence and calculate from it. It is useful for totals,
-comparisons and combining several reading steps. Expand the **Code Mode** tool
-entries in the conversation to see the script, its output and nested reading activity.
+comparisons and combining several reading steps. Expand the activity summary beneath
+an answer, then **Code Mode**, to see the script, output and nested reading activity.
 
 The script runs locally in a **QuickJS sandbox**, in a separate browser worker.
 It has no direct page, network, filesystem or credential access. It can call only
@@ -183,12 +204,13 @@ extracts its text and can cite physical page numbers. Local PDFs also need
 Scanned PDFs need OCR, which is not supported. For an embedded viewer, open the
 original PDF in its own tab.
 
-**Concurrent tasks:** Each website tab has its own default conversation. Use the
-conversation picker to resume one. For agents that keep working while you browse,
-choose **Open in tab** before starting each reply and keep those agent tabs open.
+**Concurrent tasks:** Each website tab has its own default conversation and can
+run its agent concurrently. Minimizing preserves its running reply. Use **History**
+to resume saved chats. For agents that keep working through page navigation,
+choose **Open in a tab** before starting each reply and keep those agent tabs open.
 Conversations have separate histories, attachments and Code Mode memory. Your model
-server may still queue requests. Chrome can pause hidden sidebars; closing an
-agent tab ends its runtime. If the same conversation is open elsewhere,
+server may still queue requests. Closing an agent tab ends its runtime.
+If the same conversation is open elsewhere,
 **Continue here** transfers it to the current panel.
 
 ## Privacy and current limits
@@ -220,10 +242,11 @@ provider. Read [Privacy](PRIVACY.md) before using private documents.
 | **Send** is disabled | Connect your model first. Check the URL, exact model ID and key. |
 | Model returns **403** | Check your server's host/origin policy. It must allow this extension's `chrome-extension://<extension-id>` origin; find the ID at `chrome://extensions`. Keep authentication and origin restrictions enabled. |
 | Pi can't read the page | Choose **Allow this site**, then explicitly attach the page. Chrome's own pages and other extensions' pages cannot be read. |
+| The companion is missing | Click the toolbar icon to open it on this webpage, or restore hidden companions in Settings. Allow the website for automatic appearance on future visits. PDFs and restricted pages open Accanto in a separate tab. |
 | A key disappeared | Keys are deliberately session-only. Re-enter it after restarting Chrome. |
 | Search fails | Check the selected provider, key and quota, or use **Open search in browser**. Exa's shared service can hit its limit. |
-| Another panel owns the conversation | Choose **Continue here**, or return to the owning sidebar and choose **Open in tab**. |
-| Want to try it without a model? | Select **Offline scripted check** in model settings and **Connect**. This tests browser tools without AI inference; explicit search/source commands can still access the network. |
+| Another panel owns the conversation | Choose **Continue here**, or return to the owning companion and choose **Open in a tab**. |
+| Want to try it without a model? | Open **Settings → Developer tools**, select **Offline scripted check** and **Connect**. This tests browser tools without AI inference; explicit search/source commands can still access the network. |
 
 ## For developers
 
@@ -231,6 +254,8 @@ Built on Pi Durable 1.4.0, with bundled QuickJS WASM and PDF.js. Node is needed
 for building/testing only. No native host or separate MCP process runs at runtime.
 Model streaming and tool-call serialization use Pi AI's Chat Completions,
 Responses, Anthropic Messages and Google Generative AI adapters.
+The UI uses locally bundled [Basecoat](https://basecoatui.com/) components with
+the Accanto sage theme; it does not load scripts, fonts or styles from a CDN.
 
 ```sh copy Copy Test Commands
 npm ci
@@ -239,12 +264,12 @@ npm run build
 npm run test:fixtures
 ```
 
-On Linux, use `npx playwright install --with-deps chromium`. CI runs the four
+On Linux, use `npx playwright install --with-deps chromium`. CI runs the five
 fixture suites on Ubuntu 24.04 with Node 22; no model/search keys are required.
 See [Contributing](CONTRIBUTING.md) for individual suites, optional live/native
 checks, environment settings and test boundaries.
 
-Original source and Beside artwork are [MIT licensed](LICENSE). Bundled dependencies
+Original source and companion artwork are [MIT licensed](LICENSE). Bundled dependencies
 retain their own licenses; read [Third-party notices](THIRD_PARTY_NOTICES.md)
 before distributing a prebuilt extension. The `private` npm flag prevents accidental
 npm publication and does not restrict the source license.

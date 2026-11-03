@@ -20,6 +20,8 @@ import { readPdf } from './pdf-reader.js';
 
 const context = BACKGROUND_CONTEXT;
 const $ = (id) => document.getElementById(id);
+const embedded = location.pathname.endsWith('/companion.html');
+let reconnectPending = false;
 let root;
 let harness;
 let attachment;
@@ -70,8 +72,17 @@ async function conversationRequest(options = {}) {
 }
 
 function showConversations(conversations) {
-  $('conversation').replaceChildren(...conversations.map(item => new Option(item.title, item.id)));
-  $('conversation').value = conversationId;
+  $('conversation').replaceChildren(...conversations.map(item => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.value = item.id;
+    button.title = item.title;
+    button.className = 'conversation-item';
+    button.setAttribute('aria-current', String(item.id === conversationId));
+    button.innerHTML = '<span></span><svg class="current-check" viewBox="0 0 20 20" aria-hidden="true"><path d="m5 10 3 3 7-7"/></svg>';
+    button.querySelector('span').textContent = item.title;
+    return button;
+  }));
   const title = conversations.find(item => item.id === conversationId)?.title || 'Conversation';
   document.title = `Pi Accanto · ${title}`;
 }
@@ -80,7 +91,7 @@ async function currentTab(preferConversation = false) {
   const [active] = await chrome.tabs.query({ active: true, currentWindow: true });
   // An agent opened as an ordinary extension tab still reads its source tab,
   // rather than attempting to attach to its own extension UI.
-  const id = preferConversation || active?.url?.startsWith(chrome.runtime.getURL('')) ? conversationTabId : active?.id;
+  const id = embedded || preferConversation || active?.url?.startsWith(chrome.runtime.getURL('')) ? conversationTabId : active?.id;
   return id === undefined ? active : chrome.tabs.get(id).catch(() => undefined);
 }
 
@@ -173,6 +184,8 @@ function render(view) {
   const focusedMessage = document.activeElement.closest('details[data-message]')?.dataset.message;
   const focusedCopy = document.activeElement.dataset.copyMessage;
   transcript.replaceChildren();
+  let activityGroup;
+  let activityLabels;
   for (const entry of entries.slice(Math.max(0, fresh))) {
     if (entry.kind === 'accanto.target') {
       if (transcript.hasChildNodes()) {
@@ -195,14 +208,27 @@ function render(view) {
       const toolCalls = Array.isArray(message.content) ? message.content.filter((block) => block.type === 'toolCall') : [];
       const body = messageBody(text, message.role === 'assistant' && !toolCalls.length);
       if (message.role === 'toolResult' || toolCalls.length) {
+        if (!activityGroup) {
+          activityGroup = document.createElement('details');
+          activityGroup.className = 'turn-activity';
+          activityGroup.dataset.message = `tools:${entry.id}:${messageIndex}`;
+          activityGroup.open = expanded.has(activityGroup.dataset.message);
+          activityGroup.append(document.createElement('summary'), document.createElement('div'));
+          activityLabels = new Set();
+          transcript.append(activityGroup);
+        }
         const details = document.createElement('details');
         details.dataset.message = `${entry.id}:${messageIndex}`;
         details.open = expanded.has(details.dataset.message);
         const summary = document.createElement('summary');
         const names = message.role === 'toolResult' ? [message.toolName] : toolCalls.map((call) => call.name);
         const label = names.map((name) => toolLabels[name] || name).join(' · ');
+        activityLabels.add(label);
+        if (message.isError) activityGroup.dataset.error = 'true';
+        activityGroup.firstChild.textContent = `${[...activityLabels].join(' · ')}${activityGroup.hasAttribute('data-error') ? ' · Failed' : ''}`;
         summary.textContent = `${label} · ${message.role === 'toolResult' ? message.isError ? 'Failed' : 'Result' : 'Tool call'}`;
         article.classList.add('activity');
+        if (toolCalls.length) { article.classList.remove('assistant'); article.classList.add('toolCall'); }
         article.toggleAttribute('data-error', Boolean(message.isError));
         details.append(summary, body);
         if (message.details?.calls?.length) details.append(nestedActivity(message.details.calls));
@@ -233,7 +259,12 @@ function render(view) {
           article.append(actions);
         }
       }
-      transcript.append(article);
+      if (article.classList.contains('activity')) activityGroup.lastChild.append(article);
+      else {
+        transcript.append(article);
+        if (activityGroup && message.role === 'assistant') transcript.append(activityGroup);
+        activityGroup = undefined;
+      }
     }
   }
   const nested = view.docs['pi.live']?.nestedTools ?? [];
@@ -334,7 +365,7 @@ async function attachCurrent(preferConversation = false) {
     page = results[0].result;
   } catch {
     await showAttachment();
-    throw new Error('Choose Allow this site in the sidebar, then try again. You can also grant temporary access with the toolbar action.');
+    throw new Error('Choose Allow this site in Accanto, then try again. You can also grant temporary access with the toolbar action.');
   }
   if (!/^(https?:|file:)/.test(page.url)) throw new Error('This viewer URL is unsupported. Open the original PDF directly in an http(s) or file tab.');
   if (page.url.startsWith('file:') && !page.pdf) throw new Error('Only PDF documents are supported in local file tabs.');
@@ -366,6 +397,24 @@ async function writeTarget(data) {
 async function start() {
   const activateOnReady = location.hash === '#continue';
   const parameters = new URLSearchParams(location.search);
+  const settingsOnly = !embedded && parameters.has('settings');
+  $('search-settings-slot').append($('research-settings'));
+  for (const button of document.querySelectorAll('button:not(.icon-button)')) button.classList.add('btn');
+  for (const input of document.querySelectorAll('input:not([type=checkbox])')) input.classList.add('input');
+  for (const select of document.querySelectorAll('select')) select.classList.add('select');
+  const openSettings = () => {
+    if (embedded) void chrome.tabs.create({ url: chrome.runtime.getURL(`panel.html?settings=1&tab=${conversationTabId}`) });
+    else { $('connection').open = true; $('model-api').focus(); }
+  };
+  $('connect-model').addEventListener('click', openSettings);
+  $('open-settings').addEventListener('click', openSettings);
+  $('open-settings').hidden = $('minimize').hidden = !embedded;
+  $('minimize').addEventListener('click', () => parent.postMessage({ type: 'accanto-minimize' }, '*'));
+  const statusChanged = () => {
+    $('status').dataset.quiet = String(!busy && /^(Ready|Reply complete|Check complete|Attached|New conversation|Web research)/.test($('status').textContent));
+    if (embedded) parent.postMessage({ type: 'accanto-busy', busy }, '*');
+  };
+  new MutationObserver(statusChanged).observe($('status'), { childList: true });
   const requestedTab = parameters.get('tab');
   const conversation = await conversationRequest({
     tabId: requestedTab !== null ? Number(requestedTab) : undefined,
@@ -380,20 +429,25 @@ async function start() {
   showConversations(conversation.conversations);
   chrome.storage.onChanged.addListener((changes, area) => {
     if (area === 'local' && changes.conversations) showConversations(Object.values(changes.conversations.newValue || {}));
+    if (embedded && ((area === 'local' && (changes.modelConnection || changes.mode)) || (area === 'session' && changes.apiKey))) {
+      reconnectPending = true;
+      if (!busy) location.reload();
+    }
   });
-  $('conversation').addEventListener('change', async () => {
-    if (busy) { $('conversation').value = conversationId; return; }
+  $('conversation').addEventListener('click', async (event) => {
+    const button = event.target.closest('button');
+    if (busy || !button || button.value === conversationId) return;
     try {
-      const selected = await conversationRequest({ id: $('conversation').value });
+      const selected = await conversationRequest({ id: button.value });
       parameters.set('conversation', selected.id);
       location.href = `${location.pathname}?${parameters}`;
     } catch (error) { $('status').textContent = error.message; }
   });
   $('open-conversation').addEventListener('click', () => {
     if (busy || !ownsConversation) return;
-    // Keep the sidebar visible until it has released ownership. Chrome can
-    // pause it if the destination tab is activated before the handoff completes.
-    void chrome.tabs.create({ url: `${location.origin}${location.pathname}?${parameters}#continue`, active: false });
+    // Release ownership before activating the destination; Chrome may pause
+    // a hidden source while its handoff is still in progress.
+    void chrome.tabs.create({ url: `${chrome.runtime.getURL('panel.html')}?${parameters}#continue`, active: false });
   });
   const { mode = 'live', modelConnection } = await chrome.storage.local.get(['mode', 'modelConnection']);
   const endpoint = modelConnection?.endpoint || '';
@@ -494,6 +548,11 @@ async function start() {
     $('search-status').textContent = 'Key forgotten; using Exa. Existing conversation evidence remains on this device.';
   });
   $('mode').value = mode;
+  const connectionStatus = (state, message) => {
+    $('connection-status').dataset.state = state;
+    $('connection-status').textContent = message;
+    $('connect').textContent = state === 'connected' ? 'Reconnect' : state === 'checking' ? 'Connecting…' : state === 'error' ? 'Retry connection' : 'Connect';
+  };
   const showModelSettings = () => {
     for (const id of ['model-api', 'model-endpoint', 'model-id', 'api-key']) $(id).disabled = $('mode').value === 'scripted';
     $('endpoint-help').textContent = modelApis[$('model-api').value].help;
@@ -504,20 +563,25 @@ async function start() {
     $('model-endpoint').value = modelApis[$('model-api').value].endpoint;
     $('model-id').value = '';
     $('api-key').value = '';
-    $('connection-status').textContent = 'Enter this API’s model and key, then Connect to apply. Your active connection is unchanged.';
+    connectionStatus('draft', 'Enter this API’s model and key, then Connect to apply. Your active connection is unchanged.');
     showModelSettings();
   });
+  $('settings').addEventListener('input', event => {
+    if (event.target.matches('#model-endpoint, #model-id, #api-key, #mode')) connectionStatus('draft', 'Changes not applied. Connect to check and save. Your active connection is unchanged.');
+  });
   $('provider-notice').textContent = scripted ? 'Offline check' : modelId || 'Set up model';
-  $('connection-status').textContent = scripted ? 'Offline check mode.' : apiKey ? 'Credential available.' : 'Enter a key to connect.';
-  $('connection').open = !scripted && !apiKey;
+  connectionStatus(scripted ? 'offline' : apiKey ? 'connected' : 'disconnected', scripted ? 'Offline check mode.' : apiKey ? `Connected to ${modelId}. Credential available for this browser session.` : 'Not connected. Enter your API key, then Connect.');
+  $('onboarding').hidden = scripted || Boolean(apiKey) || settingsOnly;
+  $('connection').open = settingsOnly;
   $('send').textContent = scripted ? 'Run check' : 'Send';
   if (scripted) {
     $('prompt').value = 'Inspect this tab';
     $('help').textContent = 'Scripted tools · No AI inference';
   }
   document.addEventListener('pointerdown', (event) => {
-    if (!$('connection').contains(event.target)) $('connection').open = false;
-    if (!$('research-settings').contains(event.target)) $('research-settings').open = false;
+    if (!settingsOnly && !$('connection').contains(event.target)) $('connection').open = false;
+    if (!$('history-menu').contains(event.target)) $('history-menu').open = false;
+    if (!$('context-menu').contains(event.target)) $('context-menu').open = false;
   });
   document.addEventListener('keydown', (event) => {
     if (event.key === 'Escape' && $('connection').open) {
@@ -528,6 +592,13 @@ async function start() {
       $('research-settings').open = false;
       $('research-settings').querySelector('summary').focus();
     }
+    for (const id of ['history-menu', 'context-menu']) if (event.key === 'Escape' && $(id).open) {
+      $(id).open = false;
+      $(id).querySelector('summary').focus();
+      event.preventDefault();
+      return;
+    }
+    if (event.key === 'Escape' && embedded && !$('connection').open) parent.postMessage({ type: 'accanto-minimize' }, '*');
   });
   $('transcript').addEventListener('click', (event) => {
     const suggestion = event.target.closest('button[data-prompt]');
@@ -557,7 +628,7 @@ async function start() {
         const key = $('api-key').value.trim() || (nextEndpoint === endpoint && nextApi === modelApi ? apiKey : '');
         if (!key) throw new Error('Enter this endpoint’s API key. Saved keys are not reused for a different endpoint or API format.');
         if (!await chrome.permissions.request({ origins: [`${url.origin}/*`] })) throw new Error('Model server access was declined.');
-        $('connection-status').textContent = 'Checking model endpoint…';
+        connectionStatus('checking', 'Checking model endpoint…');
         let path = '/models';
         let headers = { Authorization: `Bearer ${key}` };
         if (nextApi === 'anthropic-messages') {
@@ -578,10 +649,19 @@ async function start() {
       await chrome.storage.local.set({ mode: $('mode').value });
       location.reload();
     } catch (error) {
-      $('connection-status').textContent = `Connection failed: ${error.message}`;
+      connectionStatus('error', `Connection failed: ${error.message}`);
       $('connect').disabled = false;
     }
   });
+  $('restore-companions').addEventListener('click', async () => {
+    await chrome.storage.local.set({ companionHiddenSites: [] });
+    $('restore-companions').textContent = 'Companions restored';
+  });
+  if (settingsOnly) {
+    document.body.dataset.settings = 'true';
+    document.title = 'Accanto · Settings';
+    return;
+  }
   const ownership = new BroadcastChannel(`pi-accanto-ownership-${conversationId}`);
   const showInactive = (message) => {
     $('panel-owner').hidden = false;
@@ -590,7 +670,7 @@ async function start() {
     $('send').disabled = true;
     $('stop').disabled = true;
     for (const element of document.body.children) {
-      if (element.id !== 'panel-owner' && element.id !== 'conversation-bar') element.inert = true;
+      if (element.id !== 'panel-owner' && !element.classList.contains('product-header')) element.inert = true;
     }
     $('open-conversation').disabled = true;
   };
@@ -766,6 +846,7 @@ async function start() {
     $(id).disabled = false;
     $(id).addEventListener('click', async () => {
       if (busy || !ownsConversation) return;
+      $('history-menu').open = $('context-menu').open = false;
       busy = true;
       $('conversation').disabled = $('open-conversation').disabled = true;
       $('use-current-tab').disabled = $('new-conversation').disabled = $('web-conversation').disabled = $('send').disabled = true;
@@ -793,8 +874,11 @@ async function start() {
   $('composer').addEventListener('submit', async (event) => {
     event.preventDefault();
     if (busy || !ownsConversation || $('send').disabled) return;
-    const prompt = $('prompt').value.trim();
+    const draft = $('prompt').value;
+    const prompt = draft.trim();
     if (!prompt) return;
+    $('prompt').value = '';
+    $('prompt').focus({ preventScroll: true });
     busy = true;
     $('conversation').disabled = $('open-conversation').disabled = true;
     $('status').textContent = webResearch ? 'Starting web research…' : 'Reading page context…';
@@ -835,8 +919,9 @@ async function start() {
       const submission = await root.submit({ type: 'input', content, entry: { kind: 'accanto.question', data: { prompt } }, requestId: crypto.randomUUID() }, context);
       const result = await submission.wait(context);
       $('status').textContent = result.status === 'done' ? `${scripted ? 'Check' : 'Reply'} complete · Saved on this device` : `Run ended: ${result.status}${result.reason ? ` (${result.reason})` : ''}`;
-      if (result.status === 'done' && $('prompt').value.trim() === prompt) $('prompt').value = '';
+      if (result.status !== 'done' && !$('prompt').value) $('prompt').value = draft;
     } catch (error) {
+      if (!$('prompt').value) $('prompt').value = draft;
       $('status').textContent = `Error: ${error.message}`;
     } finally {
       busy = false;
@@ -846,6 +931,8 @@ async function start() {
       $('connect').disabled = false;
       $('use-current-tab').disabled = $('new-conversation').disabled = $('web-conversation').disabled = !ownsConversation;
       await showAttachment();
+      statusChanged();
+      if (reconnectPending) location.reload();
     }
   });
   $('stop').addEventListener('click', () => { void root.abort(context); codeMode.stop(); });

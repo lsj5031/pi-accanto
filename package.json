@@ -3,8 +3,13 @@
   "version": "0.2.0",
   "description": "An extension-only browser assistant with page evidence, web research and sandboxed Code Mode.",
   "license": "MIT",
-  "engines": { "node": ">=22" },
-  "repository": { "type": "git", "url": "https://github.com/lsj5031/pi-accanto.git" },
+  "engines": {
+    "node": ">=22"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/lsj5031/pi-accanto.git"
+  },
   "private": true,
   "type": "module",
   "scripts": {
@@ -14,14 +19,16 @@
     "test:research": "node test-research.mjs",
     "test:research:live": "node test-research.mjs --live",
     "test:conversations": "node test-conversations.mjs",
-    "test:sidebar": "node test-sidebar.mjs",
-    "test:fixtures": "npm test && npm run test:conversations && npm run test:pdf && npm run test:research"
+    "test:companion": "node test-companion.mjs",
+    "test:native": "node test-native.mjs",
+    "test:fixtures": "npm test && npm run test:conversations && npm run test:pdf && npm run test:research && npm run test:companion"
   },
   "dependencies": {
     "@earendil-works/chord": "1.4.0",
     "@earendil-works/pi-ai": "1.4.0",
     "@earendil-works/pi-codemode": "1.4.0",
     "@earendil-works/pi-durable": "1.4.0",
+    "basecoat-css": "1.0.2",
     "dompurify": "3.4.17",
     "marked": "18.1.2",
     "pdfjs-dist": "6.5.438",
@@ -29,6 +36,7 @@
   },
   "devDependencies": {
     "esbuild": "0.25.12",
-    "playwright": "1.56.1"
+    "playwright": "1.56.1",
+    "tailwindcss": "4.3.1"
   }
 }

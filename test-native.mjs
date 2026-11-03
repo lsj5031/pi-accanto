@@ -9,13 +9,13 @@ import assert from 'node:assert/strict';
 import { pdf, reportPdf } from './test/pdf-fixtures.mjs';
 import { browserOptions, artifactDirectory, liveModelSettings } from './test/browser.mjs';
 
-if (process.platform !== 'win32') throw new Error('The native sidebar suite requires an unlocked interactive Windows desktop. Use npm run test:fixtures for portable checks.');
+if (process.platform !== 'win32') throw new Error('The native browser suite requires an unlocked interactive Windows desktop. Use npm run test:fixtures for portable checks.');
 const model = liveModelSettings();
-const artifacts = artifactDirectory('sidebar');
+const artifacts = artifactDirectory('native');
 await mkdir(artifacts, { recursive: true });
-const pdfArtifacts = artifactDirectory('sidebar-pdf');
+const pdfArtifacts = artifactDirectory('native-pdf');
 await mkdir(pdfArtifacts, { recursive: true });
-const profile = await mkdtemp(`${tmpdir()}/pi-sidebar-`);
+const profile = await mkdtemp(`${tmpdir()}/pi-native-`);
 let denyPdf = false;
 const server = createServer((req, res) => {
   if (req.url.includes('verification.pdf')) {
@@ -58,19 +58,20 @@ try {
   const worker = browser.serviceWorkers()[0] ?? await browser.waitForEvent('serviceworker');
   const [attachedTab] = await worker.evaluate(() => chrome.tabs.query({ active: true, currentWindow: true }));
   assert.match(attachedTab.url, /^http:\/\/127\.0\.0\.1:/, 'Toolbar action must grant activeTab access');
-  let contexts = [];
-  const panelDeadline = Date.now() + 10000;
-  while (!contexts.length && Date.now() < panelDeadline) {
-    contexts = await worker.evaluate(() => chrome.runtime.getContexts({ contextTypes: ['SIDE_PANEL'] }));
-    if (!contexts.length) await new Promise(resolve => setTimeout(resolve, 100));
-  }
-  assert.equal(contexts.length, 1, 'Toolbar action must open an actual side panel');
+  await fixture.waitForFunction(() => document.querySelector('[data-accanto-companion]')?.getBoundingClientRect().width > 300);
+  const companion = fixture.frames().find(frame => frame.url().includes('/companion.html'));
+  await companion.locator('#minimize').click();
+  const launcher = await fixture.locator('[data-accanto-companion]').boundingBox();
+  await fixture.mouse.click(launcher.x + 26, launcher.y + 26, { button: 'right' });
+  const panelOpened = browser.waitForEvent('page');
+  await fixture.keyboard.press('Enter'); // Open in a tab from the companion menu.
+  let panel = await panelOpened;
   const port = (await readFile(resolve(profile, 'DevToolsActivePort'), 'utf8')).split('\n')[0];
   remote = await chromium.connectOverCDP(`http://127.0.0.1:${port}`);
   console.log('Connected browser:', remote.version());
-  let panel = remote.contexts().flatMap((context) => context.pages()).find((page) => new URL(page.url()).pathname === '/panel.html');
-  assert.ok(panel, 'Actual side panel must be accessible');
+  assert.equal(new URL(panel.url()).searchParams.get('tab'), String(attachedTab.id));
   await panel.waitForFunction(() => document.getElementById('status')?.textContent.includes('Connect your model'));
+  assert.equal(await panel.locator('.product-header h1').isVisible(), true);
   await panel.screenshot({ path: resolve(artifacts, 'live-settings.png') });
   await panel.screenshot({ path: resolve(artifacts, 'conversation-setup.png') });
   const credential = model.apiKey;
@@ -97,6 +98,7 @@ try {
     });
   }
   observe(panel);
+  await panel.locator('#connect-model').click();
   await panel.locator('#model-endpoint').fill(model.endpoint);
   await panel.locator('#model-id').fill(model.modelId);
   await panel.locator('#api-key').fill(credential);
@@ -115,7 +117,7 @@ try {
   await panel.locator('#prompt').press('Control+Enter');
   await panel.waitForFunction(() => !document.getElementById('send')?.disabled, null, { timeout: 150000 });
   const report = {
-    chrome: remote.version(), context: contexts[0].contextType, activeTabGranted: true,
+    chrome: remote.version(), context: 'TAB', activeTabGranted: true,
     liveStatus: await panel.locator('#status').innerText(),
     liveTranscript: await panel.locator('#transcript').textContent(), requests, responses,
   };
@@ -126,7 +128,7 @@ try {
   console.log('Live result:', report.liveStatus, report.liveTranscript);
   await panel.screenshot({ path: resolve(artifacts, report.liveReadPassed ? 'live-read.png' : 'live-blocked.png') });
   native('prepare');
-  native('screenshot', '-Path', resolve(artifacts, 'chrome-sidebar-live.png'));
+  native('screenshot', '-Path', resolve(artifacts, 'chrome-agent-live.png'));
   native('screenshot', '-Path', resolve(artifacts, 'conversation-chrome-read.png'));
   await panel.screenshot({ path: resolve(artifacts, 'conversation-read.png') });
   if (report.liveReadPassed) {
@@ -154,8 +156,8 @@ try {
         return { answer: await panel.locator('article.assistant').last().innerText(), elapsedMs: Date.now() - start };
       } catch (error) {
         const status = await panel.locator('#status').innerText();
-        await writeFile(resolve(artifacts, 'sidebar-failure.json'), JSON.stringify({ prompt, error: String(error), status, requests, responses, transcript: await panel.locator('#transcript').textContent() }, null, 2));
-        await panel.screenshot({ path: resolve(artifacts, 'sidebar-failure.png') });
+        await writeFile(resolve(artifacts, 'native-failure.json'), JSON.stringify({ prompt, error: String(error), status, requests, responses, transcript: await panel.locator('#transcript').textContent() }, null, 2));
+        await panel.screenshot({ path: resolve(artifacts, 'native-failure.png') });
         throw error;
       }
     }
@@ -185,7 +187,7 @@ try {
       report.liveEdits.push({ text, ...result });
       if (report.liveEdits.length === 1) {
         native('prepare');
-        native('screenshot', '-Path', resolve(artifacts, 'chrome-sidebar-live-edit.png'));
+        native('screenshot', '-Path', resolve(artifacts, 'chrome-agent-live-edit.png'));
         native('screenshot', '-Path', resolve(artifacts, 'conversation-chrome-edit.png'));
         await panel.screenshot({ path: resolve(artifacts, 'conversation-edit.png') });
       }
@@ -207,16 +209,16 @@ try {
     assert.match(report.cancelStatus, /aborted|cancel/i);
     report.recovery = await send('Reply with exactly: Ready for the next task. Do not use tools.');
     assert.match(report.recovery.answer, /Ready for the next task/);
-    // Chrome can pause a hidden tab-specific sidebar. Move this conversation to
-    // a regular agent tab for the cross-tab follow-ups, using the product action.
-    const originalSidebar = panel;
+    // Exercise the product's explicit conversation handoff to another agent tab.
+    const originalPanel = panel;
     const agentOpened = browser.waitForEvent('page');
+    await panel.locator('#history-menu > summary').click();
     await panel.locator('#open-conversation').click();
     panel = await agentOpened;
     await panel.waitForFunction(() => document.getElementById('status').textContent.includes('Ready'));
     observe(panel);
-    assert.equal(await originalSidebar.locator('#send').isDisabled(), true);
-    report.followupsContext = 'TAB via Open in tab; initial live answers, editing, clipboard and Stop were SIDE_PANEL';
+    assert.equal(await originalPanel.locator('#send').isDisabled(), true);
+    report.followupsContext = 'TAB via Open in a tab; initial answers and controls also ran in an agent tab';
     const other = await browser.newPage();
     await other.goto(`http://127.0.0.1:${server.address().port}/other`);
     await other.evaluate(() => {
@@ -238,7 +240,7 @@ try {
     await panel.reload();
     await panel.waitForFunction(() => document.getElementById('status')?.textContent.includes('Ready'));
     assert.equal(await panel.locator('#target').textContent(), 'Pi Tab verification');
-    // This tab has never received activeTab. Grant its site from the actual sidebar instead.
+    // This source tab has never received activeTab. Grant its site from Accanto.
     await panel.locator('#use-current-tab').evaluate((button) => button.click());
     await panel.waitForFunction(() => !document.getElementById('use-current-tab').disabled);
     assert.match(await panel.locator('#status').textContent(), /toolbar action/);
@@ -305,7 +307,7 @@ try {
     assert.equal(requests.length, beforeUnavailable, 'Unavailable target must not invoke the model');
     assert.equal(await fixture.locator('#draft').inputValue(), report.liveEdits.at(-1).text);
     await panel.screenshot({ path: resolve(artifacts, 'attachment-live-unavailable.png') });
-    report.attachment = { followup, changed, preservedFollowupContext: true, oldTaskExcluded: true, sidebarSiteGrant: true, newConversationClearsContext: true, closedTargetBlocked: true };
+    report.attachment = { followup, changed, preservedFollowupContext: true, oldTaskExcluded: true, nativeSiteGrant: true, newConversationClearsContext: true, closedTargetBlocked: true };
     await panel.reload();
     await panel.waitForFunction(() => document.getElementById('status')?.textContent.includes('Ready'));
     assert.match(await panel.locator('#transcript').innerText(), /Fresh conversation ready/);
@@ -348,7 +350,18 @@ try {
     await pdfTab.goto(pathToFileURL(localPdf).href);
     await pdfTab.waitForLoadState('networkidle');
     await pdfTab.bringToFront();
+    const localAgentOpened = browser.waitForEvent('page');
     native('workflow');
+    const localAgent = await localAgentOpened;
+    await localAgent.waitForFunction(() => document.getElementById('status')?.textContent.includes('Ready'));
+    await localAgent.close();
+    if (await panel.locator('#continue-here').isVisible()) {
+      await panel.locator('#continue-here').click();
+      await panel.waitForFunction(() => document.getElementById('status')?.textContent.includes('Ready'));
+    }
+    await pdfTab.bringToFront();
+    await panel.locator('#use-current-tab').evaluate(button => button.click());
+    await panel.waitForFunction(() => !document.getElementById('use-current-tab').disabled);
     await panel.waitForFunction(async () => (await chrome.tabs.query({ active: true, currentWindow: true }))[0]?.status === 'complete');
     await panel.locator('#new-conversation').evaluate(button => button.click());
     await panel.waitForFunction(() => !document.getElementById('new-conversation').disabled);
@@ -378,16 +391,17 @@ try {
     await panel.screenshot({ path: resolve(pdfArtifacts, 'pdf-denied-live-answer.png') });
     denyPdf = false;
     report.pdf = { pdfRead, pdfFollowup, localRead, scanRead, deniedRead, toolbarGrantRequired: true, pages: pdfResult.pages.map(page => page.page) };
-    await writeFile(resolve(pdfArtifacts, 'pdf-live-report.json'), JSON.stringify({ chrome: remote.version(), context: contexts[0].contextType, ...report.pdf }, null, 2));
+    await writeFile(resolve(pdfArtifacts, 'pdf-live-report.json'), JSON.stringify({ chrome: remote.version(), context: 'TAB', ...report.pdf }, null, 2));
     await pdfTab.close();
     await fixture.bringToFront();
-    await writeFile(resolve(artifacts, 'sidebar-report.json'), JSON.stringify(report, null, 2));
+    await writeFile(resolve(artifacts, 'native-report.json'), JSON.stringify(report, null, 2));
     console.log('PASS: live HTML controls and attachment cases; online/local PDF answers with page references, PDF follow-up while another tab active, scan honesty and fetch denial.');
   }
   assert.ok(requests.every((request) => request.model === 'main' && !request.roles.includes('developer')));
-  // Check the actual sidebar's browser tools independently if inference is blocked.
+  // Check native browser tools independently if inference is blocked.
   await fixture.locator('p').evaluate((paragraph) => { paragraph.textContent = 'Invoice NZ-427 has 3 items at $27.50 each and delivery of $8.25.'; });
   await panel.locator('#connection').evaluate((details) => { details.open = true; });
+  await panel.locator('.advanced > summary').click();
   await panel.locator('#mode').selectOption('scripted');
   await Promise.all([panel.waitForEvent('load'), panel.locator('#connect').evaluate((button) => button.click())]);
   await panel.waitForFunction(() => document.getElementById('status')?.textContent.includes('Ready'));
@@ -402,7 +416,7 @@ try {
   assert.equal(await fixture.locator('#draft').inputValue(), 'Hi Alex, your invoice total is $90.75 including delivery.');
   assert.equal(await fixture.evaluate(() => window.submissions), 0);
   native('prepare');
-  native('screenshot', '-Path', resolve(artifacts, 'chrome-sidebar-edit.png'));
+  native('screenshot', '-Path', resolve(artifacts, 'chrome-agent-edit.png'));
   await fixture.locator('#password').focus();
   await panel.locator('#prompt').fill('Type: must not change password');
   await panel.locator('#send').evaluate((button) => button.click());
@@ -412,10 +426,10 @@ try {
   await panel.reload();
   await panel.waitForFunction(() => document.getElementById('status')?.textContent.includes('Ready'));
   assert.match(await panel.locator('#transcript').innerText(), /Hi Alex, your invoice total is/);
-  report.scriptedSidebarControlsPassed = true;
-  await writeFile(resolve(artifacts, 'sidebar-report.json'), JSON.stringify(report, null, 2));
-  console.log('PASS: real toolbar activeTab grant, SIDE_PANEL, scripted inspection/edit/password exclusion/reload.');
-  assert.ok(report.liveReadPassed, 'Live inference failed; inspect sidebar-report.json for the actual endpoint response');
+  report.scriptedNativeControlsPassed = true;
+  await writeFile(resolve(artifacts, 'native-report.json'), JSON.stringify(report, null, 2));
+  console.log('PASS: real toolbar activeTab grant, agent tab, scripted inspection/edit/password exclusion/reload.');
+  assert.ok(report.liveReadPassed, 'Live inference failed; inspect native-report.json for the actual endpoint response');
 } finally {
   await remote?.close();
   await browser?.close();

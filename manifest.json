@@ -3,7 +3,7 @@
   "name": "Pi Accanto",
   "version": "0.2.0",
   "description": "An assistant beside your browser tab, with page and PDF reading, web research, and sandboxed Code Mode.",
-  "permissions": ["sidePanel", "tabs", "activeTab", "scripting", "storage"],
+  "permissions": ["tabs", "activeTab", "scripting", "storage"],
   "host_permissions": ["file:///*", "https://mcp.exa.ai/*"],
   "optional_host_permissions": ["http://*/*", "https://*/*"],
   "icons": { "16": "assets/icon-16.png", "32": "assets/icon-32.png", "48": "assets/icon-48.png", "128": "assets/icon-128.png" },
@@ -12,7 +12,7 @@
     "default_icon": { "16": "assets/icon-16.png", "32": "assets/icon-32.png" }
   },
   "commands": { "_execute_action": { "suggested_key": { "default": "Alt+Shift+P" } } },
-  "side_panel": { "default_path": "panel.html" },
   "background": { "service_worker": "background.js" },
+  "web_accessible_resources": [{ "resources": ["companion.html"], "matches": ["http://*/*", "https://*/*"] }],
   "content_security_policy": { "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'; worker-src 'self'; connect-src 'self' http: https: file:" }
 }

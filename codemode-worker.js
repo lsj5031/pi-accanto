@@ -1,7 +1,7 @@
 import { serveCodemodeRemote } from '@earendil-works/pi-codemode/portable';
 
 // The upstream remote server uses the same inline QuickJS launcher as
-// InlineCodemodeSandbox. Keep synchronous WASM execution off the sidebar thread.
+// InlineCodemodeSandbox. Keep synchronous WASM execution off the UI thread.
 const wasm = fetch(new URL('quickjs.wasm', import.meta.url))
   .then((response) => {
     if (!response.ok) throw new Error('Could not load bundled QuickJS WASM.');

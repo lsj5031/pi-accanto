@@ -4,17 +4,28 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Pi Accanto</title>
+  <link rel="stylesheet" href="basecoat.css">
   <link rel="stylesheet" href="panel.css">
 </head>
 <body>
   <header class="product-header">
-    <h1><img class="brand" src="assets/beside.svg" alt="" width="28" height="28">Pi Accanto</h1>
+    <h1><span class="buddy" aria-hidden="true"></span>Accanto</h1>
+    <div class="header-actions">
+    <details id="history-menu">
+      <summary class="icon-button" aria-label="Conversation history" title="History and new chat"><svg viewBox="0 0 20 20"><path d="M3 9a7 7 0 1 1 2 6M3 3v6h6M10 6v4l3 2"/></svg></summary>
+      <section id="conversation-bar" class="popover" aria-label="Conversations">
+        <div class="history-heading"><h2>Your chats</h2><button type="button" id="new-conversation" disabled><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 4v12M4 10h12"/></svg>New chat</button></div>
+        <div class="history-list"><fieldset id="conversation" aria-label="Saved conversations"></fieldset></div>
+        <button type="button" id="open-conversation" title="Move this conversation to a browser tab before starting a reply">Open in a tab<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M7 4H4v12h12v-3M10 4h6v6M16 4l-7 7"/></svg></button>
+      </section>
+    </details>
+    <button type="button" id="open-settings" class="icon-button" aria-label="Settings" title="Settings" hidden><svg viewBox="0 0 20 20"><path d="M4 6h12M4 14h12M7 3v6M13 11v6"/></svg></button>
     <details id="connection">
-      <summary aria-label="Model connection"><span id="provider-notice">main</span><span class="connection-chevron" aria-hidden="true"></span></summary>
+      <summary class="icon-button" aria-label="Settings" title="Settings"><svg viewBox="0 0 20 20"><path d="M4 6h12M4 14h12M7 3v6M13 11v6"/></svg><span id="provider-notice" class="sr-only">Set up model</span></summary>
+      <div id="settings-drawer" class="popover">
+      <h2 class="settings-title">Settings</h2>
       <form id="settings">
         <h2>Model connection</h2>
-        <label for="mode">Mode</label>
-        <select id="mode"><option value="live">AI model</option><option value="scripted">Offline scripted check</option></select>
         <label for="model-api">Model API</label>
         <select id="model-api" aria-describedby="endpoint-help"><option value="openai-completions">Chat Completions</option><option value="openai-responses">OpenAI · Responses</option><option value="anthropic-messages">Anthropic · Messages</option><option value="google-generative-ai">Google Gemini</option></select>
         <label for="model-endpoint">API base URL</label>
@@ -31,12 +42,23 @@
         <p id="all-sites-help">Allow sites individually, or approve access to all HTTP(S) websites once. Only the attached page is read.</p>
         <button type="button" id="all-sites" aria-describedby="all-sites-help">Allow all websites</button>
         <p id="access-status" role="status"></p>
+        <h2 class="access-heading">Companion</h2>
+        <p>The companion appears on allowed websites. Right-click its button to hide it on a site. Minimizing keeps your agent running; navigating away closes it. Use Open in a tab for work that must survive page navigation.</p>
+        <button type="button" id="restore-companions">Restore hidden companions</button>
+        <details class="advanced"><summary>Developer tools</summary><label for="mode">Mode</label><select id="mode"><option value="live">AI model</option><option value="scripted">Offline scripted check</option></select></details>
       </form>
+      <div id="search-settings-slot"></div>
+      </div>
     </details>
+    <button type="button" id="minimize" class="icon-button" aria-label="Minimize Accanto" title="Minimize" hidden><svg viewBox="0 0 20 20"><path d="M5 10h10"/></svg></button>
+    </div>
   </header>
-  <section id="conversation-bar" aria-label="Conversations">
-    <select id="conversation" aria-label="Conversation" title="Switch saved conversation"></select>
-    <button type="button" id="open-conversation" title="Move this conversation to a browser tab before starting a reply">Open in tab ↗</button>
+  <section id="onboarding" hidden>
+    <div class="big-buddy"><span class="buddy" aria-hidden="true"></span></div>
+    <h2>A little help,<br>right here.</h2>
+    <p>Ask about what you’re reading.<br>Connect your AI model to get started.</p>
+    <button type="button" class="btn" id="connect-model">Connect model <span aria-hidden="true">↗</span></button>
+    <p class="onboarding-privacy">Page content is sent to the model you choose.</p>
   </section>
   <section id="panel-owner" class="tab-switch" aria-label="Continue conversation" hidden>
     <div class="notice-copy">
@@ -44,12 +66,6 @@
       <p class="context-hint">Continue here to stop the other panel’s reply and restore your saved history.</p>
     </div>
     <button type="button" id="continue-here">Continue here</button>
-  </section>
-  <section class="tab-context" aria-label="Tab context">
-    <span class="page-icon" aria-hidden="true"><svg viewBox="0 0 20 20"><rect x="3" y="4" width="14" height="12" rx="2"/><path d="M3 8h14"/></svg></span>
-    <div><p id="target">Current tab</p><p id="target-hint" class="context-hint">Send a message to start</p></div>
-    <button type="button" id="web-conversation" disabled title="Start web research without reading a tab">Web research</button>
-    <button type="button" id="new-conversation" disabled title="Clear this conversation and start fresh">New chat</button>
   </section>
   <section id="tab-switch" class="tab-switch" aria-label="Change conversation page" hidden>
     <p id="current-tab-label"></p>
@@ -95,30 +111,35 @@
   </section>
   <details id="sources" class="research-settings" hidden>
     <summary>Web sources <span id="source-count"></span></summary>
-    <p class="source-note">Search snippets are not full-page evidence. Allow individual sources, then ask Pi to read them. Access resets with each task or panel restart.</p>
+    <p class="source-note">Snippets aren’t full pages. Allow a source to read it; access resets with each task.</p>
     <div id="source-list"></div>
   </details>
   <main id="transcript" aria-label="Conversation" aria-live="polite"></main>
   <template id="empty-state">
     <section class="empty-state">
-      <h2>A little help,<br>right beside your tab.</h2>
-      <p>Ask about this page, or focus a text field and tell me what to change.</p>
+      <div class="big-buddy"><span class="buddy" aria-hidden="true"></span></div>
+      <h2>What’s on your mind?</h2>
+      <p>We can start with this page.</p>
       <div class="suggestions">
-        <button type="button" data-prompt="Summarize this page in a few sentences.">Summarize this page <span aria-hidden="true">↗</span></button>
-        <button type="button" data-prompt="Read this page and list its action items.">Find action items <span aria-hidden="true">↗</span></button>
+        <button type="button" data-prompt="Summarize this page in a few sentences.">Summarize</button>
+        <button type="button" data-prompt="Read this page and list its action items.">Find action items</button>
       </div>
     </section>
   </template>
   <footer>
     <p id="status" role="status">Opening Pi Durable…</p>
     <form id="composer">
-      <label for="prompt" id="composer-target">Ask about this page</label>
       <div class="compose-box">
-        <textarea id="prompt" rows="2" placeholder="What would you like to do?" required aria-describedby="help"></textarea>
-        <div class="compose-actions"><div class="buttons"><button id="send" disabled>Send</button><button type="button" id="stop" disabled>Stop</button></div></div>
+        <details id="context-menu">
+          <summary class="context-chip"><svg viewBox="0 0 20 20"><rect x="4" y="3" width="12" height="14" rx="2"/><path d="M7 7h6M7 10h6M7 13h4"/></svg><span id="target">This page</span><svg class="context-chevron" viewBox="0 0 20 20" aria-hidden="true"><path d="m6 8 4 4 4-4"/></svg></summary>
+          <div class="popover"><p id="target-hint" class="context-hint">Send a message to start</p><button type="button" id="web-conversation" disabled>Web only · No page attached</button></div>
+        </details>
+        <label for="prompt" id="composer-target" class="sr-only">Ask about this page</label>
+        <div class="compose-bottom"><textarea id="prompt" rows="1" placeholder="Ask about this page…" required aria-describedby="help"></textarea>
+        <div class="buttons"><button id="send" class="btn" disabled>Send</button><button type="button" id="stop" disabled>Stop</button></div></div>
       </div>
     </form>
-    <div class="composer-notes"><p id="help">Page content goes to your chosen model.</p><span class="shortcut">Ctrl / ⌘ + Enter</span></div>
+    <p id="help" class="sr-only">Page content goes to your chosen model. Ctrl or Command + Enter to send.</p>
   </footer>
   <script type="module" src="panel.js"></script>
 </body>

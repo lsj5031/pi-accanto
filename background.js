@@ -1,23 +1,108 @@
-chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: false });
-// One stable panel path per browser tab lets Chrome retain separate panel
-// contexts. Conversation IDs also work in ordinary extension tabs.
-async function configurePanel(tabId) {
-  await chrome.sidePanel.setOptions({ tabId, path: `panel.html?tab=${tabId}`, enabled: true });
+chrome.action.onClicked.addListener((tab) => {
+  if (/^https?:/.test(tab.url || '') && !/\.pdf(?:[?#]|$)/i.test(tab.url)) void openCompanion(tab);
+  else void openAgentTab(tab.id);
+});
+
+function openAgentTab(tabId, handoff = false) {
+  return chrome.tabs.create({ url: chrome.runtime.getURL(`panel.html?tab=${tabId}${handoff ? '#continue' : ''}`), active: !handoff });
 }
 
-chrome.tabs.onCreated.addListener(tab => { void configurePanel(tab.id); });
-void chrome.tabs.query({}).then(tabs => Promise.all(tabs.map(tab => configurePanel(tab.id))));
-chrome.action.onClicked.addListener((tab) => {
-  // Keep opening inside the toolbar action's user gesture.
-  void chrome.sidePanel.open({ tabId: tab.id });
+async function openCompanion(tab) {
+  try {
+    // A toolbar click also restores a companion hidden on this website.
+    const { companionHiddenSites = [] } = await chrome.storage.local.get('companionHiddenSites');
+    const origin = new URL(tab.url).origin;
+    if (companionHiddenSites.includes(origin)) {
+      await chrome.storage.local.set({ companionHiddenSites: companionHiddenSites.filter(site => site !== origin) });
+    }
+    await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ['companion-host.js'] });
+    const result = await chrome.tabs.sendMessage(tab.id, { type: 'companion-open' }, { frameId: 0 });
+    if (!result?.ok) throw new Error('Companion unavailable');
+  } catch {
+    // Preserve the source tab when a document cannot host the companion.
+    await openAgentTab(tab.id);
+  }
+}
+
+// Automatic appearance on future visits requires a durable site grant.
+let registration = Promise.resolve();
+function syncCompanions() {
+  registration = registration.catch(() => {}).then(async () => {
+    const { origins = [] } = await chrome.permissions.getAll();
+    const matches = origins.filter(origin => /^https?:/.test(origin));
+    const scripts = await chrome.scripting.getRegisteredContentScripts({ ids: ['accanto-companion'] });
+    if (!matches.length) {
+      if (scripts.length) await chrome.scripting.unregisterContentScripts({ ids: ['accanto-companion'] });
+    } else {
+      const script = { id: 'accanto-companion', matches, js: ['companion-host.js'], runAt: 'document_idle' };
+      if (scripts.length) await chrome.scripting.updateContentScripts([script]);
+      else await chrome.scripting.registerContentScripts([script]);
+    }
+    for (const tab of await chrome.tabs.query({})) {
+      if (!/^https?:/.test(tab.url || '')) continue;
+      // Chrome checks both durable grants and a still-valid toolbar activeTab
+      // grant. An unrelated permission change must not remove the latter.
+      await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ['companion-host.js'] })
+        .catch(() => chrome.tabs.sendMessage(tab.id, { type: 'companion-remove' }).catch(() => {}));
+    }
+  });
+  return registration;
+}
+chrome.permissions.onAdded.addListener(() => { void syncCompanions(); });
+chrome.permissions.onRemoved.addListener(() => { void syncCompanions(); });
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area === 'local' && changes.companionHiddenSites) void syncCompanions();
 });
+void syncCompanions();
+
+const companionUrl = chrome.runtime.getURL('companion.html');
+const panelUrl = chrome.runtime.getURL('panel.html');
+const challenges = new Map();
+const isCompanion = sender => sender.url?.split('?')[0] === companionUrl && Number.isInteger(sender.tab?.id) && sender.frameId > 0;
+
+async function trustedPanel(sender) {
+  if (sender.url?.split('?')[0] === panelUrl) return true;
+  if (!isCompanion(sender)) return false;
+  const { companionDocuments = {} } = await chrome.storage.session.get('companionDocuments');
+  return companionDocuments[sender.documentId] === sender.tab.id;
+}
 
 // Serialize catalog and tab-map updates in the service worker, including first
 // initialization. Independent panels must never race to claim a tab or session.
 let updates = Promise.resolve();
 chrome.runtime.onMessage.addListener((message, sender, reply) => {
-  if (sender.id !== chrome.runtime.id || message.type !== 'conversation') return;
+  if (sender.id !== chrome.runtime.id) return;
+  if (message.type === 'companion-authorize' && isCompanion(sender)) {
+    // A public iframe URL is not an identity. Challenge the exact WindowProxy
+    // retained by our isolated content script, then match its document ID.
+    const challenge = crypto.randomUUID();
+    const finish = (result) => { clearTimeout(challenges.get(challenge)?.timer); challenges.delete(challenge); reply(result); };
+    const timer = setTimeout(() => finish({ error: 'Open Accanto from its companion button.' }), 5000);
+    challenges.set(challenge, { documentId: sender.documentId, tabId: sender.tab.id, finish, timer });
+    void chrome.tabs.sendMessage(sender.tab.id, { type: 'companion-challenge', challenge }, { frameId: 0 })
+      .catch(() => finish({ error: 'Companion unavailable. Open Accanto from the toolbar.' }));
+    return true;
+  }
+  if (message.type === 'companion-confirm' && isCompanion(sender)) {
+    const pending = challenges.get(message.challenge);
+    if (!pending || pending.documentId !== sender.documentId || pending.tabId !== sender.tab.id) return;
+    updates = updates.catch(() => {}).then(async () => {
+      const { companionDocuments = {} } = await chrome.storage.session.get('companionDocuments');
+      for (const [id, tabId] of Object.entries(companionDocuments)) if (tabId === sender.tab.id) delete companionDocuments[id];
+      companionDocuments[sender.documentId] = sender.tab.id;
+      await chrome.storage.session.set({ companionDocuments });
+      pending.finish({ tabId: sender.tab.id });
+      reply({ ok: true });
+    });
+    return true;
+  }
+  if (message.type === 'companion-tab' && sender.frameId === 0 && /^https?:/.test(sender.url || '')) {
+    openAgentTab(sender.tab.id, true).then(() => reply({ ok: true }), error => reply({ error: error.message }));
+    return true;
+  }
+  if (message.type !== 'conversation') return;
   updates = updates.then(async () => {
+    if (!await trustedPanel(sender)) throw new Error('This window is not an authorized Accanto panel.');
     const session = await chrome.storage.session.get(['browserSession', 'tabConversations']);
     const browserSession = session.browserSession || crypto.randomUUID();
     const mapping = session.tabConversations || {};
@@ -28,7 +113,7 @@ chrome.runtime.onMessage.addListener((message, sender, reply) => {
         conversations.legacy = { id: 'legacy', title: 'Earlier conversation' };
       }
     }
-    let tabId = message.tabId;
+    let tabId = isCompanion(sender) ? sender.tab.id : message.tabId;
     if (!Number.isInteger(tabId)) {
       const [active] = await chrome.tabs.query({ active: true, currentWindow: true });
       tabId = active?.id;

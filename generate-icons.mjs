@@ -2,9 +2,9 @@ import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
 
-// Regenerate Chrome's PNG icon assets from the editable Beside artwork.
+// Regenerate Chrome's PNG icon assets from the editable companion artwork.
 const assets = new URL('./assets/', import.meta.url);
-const svg = await readFile(new URL('beside.svg', assets));
+const svg = await readFile(new URL('companion.svg', assets));
 const browser = await chromium.launch({ headless: true });
 try {
   const page = await browser.newPage({ deviceScaleFactor: 1 });

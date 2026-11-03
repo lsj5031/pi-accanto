@@ -178,7 +178,7 @@ try {
   assert.equal(sourceReads, 0);
   assert.deepEqual(exaQueries, ['empty', 'rpc-error', 'tool-error', 'changed', 'limited', 'json']);
   report.checks.push('Exa SSE/JSON fixtures with Highlights/Text, dates, empty results, HTTP200 rate limit, RPC/tool errors and unknown content; no key or identity header; explicit browser fallback');
-  await panel.locator('#research-settings').evaluate((element) => { element.open = true; });
+  await panel.locator('#research-settings').evaluate((element) => { element.closest('#connection').open = element.open = true; });
   await panel.screenshot({ path: resolve(artifacts, 'exa-settings.png') });
   await panel.locator('#search-provider').selectOption('tinyfish');
   await worker.evaluate(() => chrome.storage.session.set({ searchProvider: 'tinyfish' }));
@@ -189,12 +189,15 @@ try {
   assert.equal(await panel.locator('#tinyfish-key').inputValue(), '');
   assert.equal(await worker.evaluate(async () => (await chrome.storage.local.get('tinyfishKey')).tinyfishKey), undefined);
   const assertSettingsLayout = async () => {
+    await panel.locator('#research-settings > summary').scrollIntoViewIfNeeded();
     assert.equal(await panel.evaluate(() => {
-      const settings = document.getElementById('research-settings').getBoundingClientRect();
+      const settings = document.getElementById('settings-drawer').getBoundingClientRect();
       const summary = document.querySelector('#research-settings > summary').getBoundingClientRect();
       const footer = document.querySelector('footer').getBoundingClientRect();
-      return !document.getElementById('sources').open && summary.top >= settings.top && summary.bottom <= settings.bottom && settings.bottom <= footer.top && footer.bottom <= innerHeight + 1 && document.documentElement.scrollWidth <= innerWidth && document.documentElement.scrollHeight <= innerHeight;
-    }), true, 'Expanded settings must scroll within the layout without covering the footer or overflowing the viewport');
+      const model = document.getElementById('settings').getBoundingClientRect();
+      const search = document.getElementById('search-settings-slot').getBoundingClientRect();
+      return model.bottom <= search.top && summary.left >= settings.left && summary.right <= settings.right && !document.getElementById('sources').open && summary.top >= settings.top && summary.bottom <= settings.bottom && settings.top >= 0 && settings.bottom <= innerHeight && footer.bottom <= innerHeight + 1 && document.documentElement.scrollWidth <= innerWidth && document.documentElement.scrollHeight <= innerHeight;
+    }), true, 'Settings scroll inside the viewport without changing the composer layout or overflowing the page');
   };
   await assertSettingsLayout();
   await panel.screenshot({ path: resolve(artifacts, 'tinyfish-settings.png') });
@@ -238,7 +241,7 @@ try {
   assert.equal(await panel.locator('#brave-key').inputValue(), '');
   await assertSettingsLayout();
   await panel.screenshot({ path: resolve(artifacts, 'search-settings.png') });
-  await panel.locator('#research-settings').evaluate((element) => { element.open = false; });
+  await panel.locator('#research-settings').evaluate((element) => { element.closest('#connection').open = element.open = false; });
   if (live) {
     const providerFailure = await send('Search: Pi Accanto API integration test');
     assert.match(providerFailure, /Brave Search returned HTTP|Failed to fetch/);
@@ -309,7 +312,7 @@ try {
   // model integration without claiming a live Brave search succeeded.
   // This disposable extension's ID is not on the local model server's Origin
   // allowlist. Relay only this test's model requests through Node; the real
-  // model still chooses tools and generates the scripts. Native sidebar tests
+  // model still chooses tools and generates the scripts. Native browser tests
   // use the canonical extension ID and exercise direct transport separately.
   await panel.route(`${model.endpoint}/chat/completions`, async (route) => {
     report.modelRequests.push(route.request().postDataJSON());
@@ -378,11 +381,11 @@ try {
   await panel.waitForFunction(() => !document.getElementById('send').disabled);
   await panel.locator('#web-conversation').evaluate((element) => element.click());
   await panel.waitForFunction(() => !document.getElementById('send').disabled);
-  await panel.locator('#research-settings').evaluate((element) => { element.open = true; });
+  await panel.locator('#research-settings').evaluate((element) => { element.closest('#connection').open = element.open = true; });
   await panel.locator('#search-provider').selectOption('exa');
   await panel.locator('#save-search').evaluate((element) => element.click());
   await panel.waitForFunction(() => document.getElementById('search-state').textContent.includes('Exa'));
-  await panel.locator('#research-settings').evaluate((element) => { element.open = false; });
+  await panel.locator('#research-settings').evaluate((element) => { element.closest('#connection').open = element.open = false; });
   await panel.screenshot({ path: resolve(artifacts, 'web-ready.png') });
   const askModel = async (prompt) => {
     await panel.locator('#prompt').fill(prompt);

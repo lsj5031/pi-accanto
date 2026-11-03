@@ -128,10 +128,14 @@ try {
   assert.equal(await panel.locator('html').evaluate((element) => getComputedStyle(element).colorScheme), 'light');
   assert.equal(await panel.locator('#prompt').evaluate(element => getComputedStyle(element).fontSize), '16px', 'Chrome extension defaults must not shrink composer text');
   assert.equal(await panel.locator('#tab-switch').isVisible(), false, 'Starting a chat needs no tab-switch decision');
-  await panel.getByRole('button', { name: 'Summarize this page' }).evaluate((button) => button.click());
+  await panel.getByRole('button', { name: 'Summarize', exact: true }).evaluate((button) => button.click());
   assert.equal(await panel.locator('#prompt').inputValue(), 'Summarize this page in a few sentences.');
   await panel.screenshot({ path: resolve(artifacts, 'ready.png') });
-  await panel.locator('#prompt').evaluate((input) => input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', ctrlKey: true, bubbles: true, cancelable: true })));
+  const clearedOnSubmit = await panel.locator('#prompt').evaluate((input) => {
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', ctrlKey: true, bubbles: true, cancelable: true }));
+    return input.value;
+  });
+  assert.equal(clearedOnSubmit, '', 'The submitted draft must clear before any asynchronous page or model work');
   await panel.waitForFunction(() => document.getElementById('status')?.textContent.includes('Check complete'));
   assert.equal(await panel.locator('#prompt').inputValue(), '');
   assert.equal(await panel.locator('article.assistant .message-body strong').last().innerText(), 'Scripted compatibility check finished.');
@@ -147,6 +151,7 @@ try {
   await panel.screenshot({ path: resolve(artifacts, 'ux-copy.png') });
   const readResult = panel.locator('article.toolResult details').first();
   assert.equal(await readResult.evaluate((details) => details.open), false);
+  await readResult.evaluate(details => { details.closest('.turn-activity').open = true; });
   await readResult.locator('summary').evaluate((summary) => summary.click());
   assert.match(await readResult.innerText(), /Invoice NZ-427 totals \$183.75/);
   await panel.screenshot({ path: resolve(artifacts, 'inspected.png') });
@@ -154,11 +159,11 @@ try {
   await panel.locator('#prompt').evaluate((input) => { input.value = 'Type: Revised draft ✓'; });
   await panel.locator('#send').evaluate((button) => {
     button.click();
-    document.getElementById('prompt').value = 'Next question drafted while the reply runs.';
+    document.getElementById('prompt').value = 'Type: Revised draft ✓';
   });
   await panel.waitForFunction(() => document.getElementById('status')?.textContent.includes('Check complete'));
   assert.equal(await fixture.locator('#draft').inputValue(), 'Revised draft ✓');
-  assert.equal(await panel.locator('#prompt').inputValue(), 'Next question drafted while the reply runs.');
+  assert.equal(await panel.locator('#prompt').inputValue(), 'Type: Revised draft ✓', 'Even an identical next draft must survive completion');
   assert.equal(await fixture.evaluate(() => window.submissions), 0);
   assert.equal(await readResult.evaluate((details) => details.open), true, 'An expanded result stays open as new messages arrive');
   await panel.screenshot({ path: resolve(artifacts, 'typed.png') });
@@ -239,6 +244,15 @@ try {
   await fixture.bringToFront();
   await send('Type: must not redirect');
   assert.match(await panel.locator('#status').textContent(), /attached tab is unavailable/);
+  assert.equal(await panel.locator('#prompt').inputValue(), 'Type: must not redirect', 'A failed submission restores its draft');
+  assert.equal(await panel.evaluate(() => {
+    document.getElementById('composer').requestSubmit();
+    const cleared = document.getElementById('prompt').value;
+    document.getElementById('prompt').value = 'A newer draft entered during failure';
+    return cleared;
+  }), '');
+  await panel.waitForFunction(() => !document.getElementById('send').disabled);
+  assert.equal(await panel.locator('#prompt').inputValue(), 'A newer draft entered during failure', 'Submission failure must not overwrite the next draft');
   assert.equal(await fixture.locator('#draft').inputValue(), 'Follow-up on original tab');
   assert.equal(await panel.locator('article.user').count(), count);
   await panel.screenshot({ path: resolve(artifacts, 'attachment-unavailable.png') });
@@ -278,6 +292,7 @@ try {
   // Configure a non-default base path/model through the public settings UI.
   const modelEndpoint = `http://127.0.0.1:${server.address().port}/custom/v1`;
   await reopened.locator('#connection > summary').click();
+  await reopened.locator('.advanced > summary').click();
   await reopened.locator('#mode').selectOption('live');
   await reopened.locator('#model-endpoint').fill(`${modelEndpoint}///`);
   await reopened.locator('#model-id').fill('missing-model');

@@ -12,9 +12,12 @@ const worker = await build({
 });
 await copyFile('node_modules/quickjs-wasi/quickjs.wasm', 'dist/quickjs.wasm');
 await copyFile('node_modules/quickjs-wasi/LICENSE', 'dist/QUICKJS-WASI-LICENSE');
-for (const file of ['manifest.json', 'panel.html', 'panel.css', 'background.js']) {
+await copyFile('node_modules/basecoat-css/dist/basecoat.cdn.min.css', 'dist/basecoat.css');
+for (const file of ['manifest.json', 'panel.html', 'panel.css', 'background.js', 'companion-host.js', 'companion-bridge.js']) {
   await copyFile(file, `dist/${file}`);
 }
+await writeFile('dist/companion.html', (await readFile('panel.html', 'utf8')).replace('src="panel.js"', 'src="companion-bridge.js"'));
+await rm('dist/assets', { recursive: true, force: true });
 await cp('assets', 'dist/assets', { recursive: true });
 await copyFile('node_modules/pdfjs-dist/build/pdf.worker.mjs', 'dist/pdf.worker.mjs');
 for (const directory of ['cmaps', 'standard_fonts']) {
@@ -25,6 +28,8 @@ await writeFile('dist/bundle-meta.json', JSON.stringify(result.metafile, null, 2
 await rm('dist/third-party', { recursive: true, force: true });
 const packages = new Set(Object.keys({ ...result.metafile.inputs, ...worker.metafile.inputs })
   .map(input => input.match(/^(.*node_modules\/(?:@[^/]+\/)?[^/]+)(?:\/|$)/)?.[1]).filter(Boolean));
+packages.add('node_modules/basecoat-css');
+packages.add('node_modules/tailwindcss');
 const notices = [];
 for (const directory of [...packages].sort()) {
   const metadata = JSON.parse(await readFile(`${directory}/package.json`, 'utf8'));
