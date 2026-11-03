@@ -407,6 +407,7 @@ async function start() {
     else { $('connection').open = true; $('model-api').focus(); }
   };
   $('connect-model').addEventListener('click', openSettings);
+  $('connect-model').disabled = false;
   $('open-settings').addEventListener('click', openSettings);
   $('open-settings').hidden = $('minimize').hidden = !embedded;
   $('minimize').addEventListener('click', () => parent.postMessage({ type: 'accanto-minimize' }, '*'));
