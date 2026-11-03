@@ -163,15 +163,18 @@ try {
   assert.equal(await a.locator('.turn-activity').evaluate(element => element.open), false);
   await page.screenshot({ path: resolve(artifacts, 'answer.png') });
   await a.locator('.turn-activity > summary').click();
-  await a.locator('article.toolCall summary').click();
-  await a.locator('article.toolCall pre').evaluate(element => element.scrollIntoView({ block: 'start', behavior: 'instant' }));
-  assert.equal(await a.locator('article.toolCall pre').evaluate(element => {
+  assert.equal(await a.locator('article.activity').count(), 1, 'One action must contain its call and result together');
+  await a.locator('article.toolResult summary').click();
+  assert.match(await a.locator('article.toolResult .tool-input').textContent(), /tools\.inspect_tab/);
+  await a.locator('article.toolResult .tool-input').evaluate(element => element.scrollIntoView({ block: 'start', behavior: 'instant' }));
+  const scriptBounds = await a.locator('article.toolResult .tool-input').evaluate(element => {
     const box = element.getBoundingClientRect();
     const transcript = document.getElementById('transcript').getBoundingClientRect();
-    return box.height > 0 && box.top >= transcript.top && box.bottom <= transcript.bottom;
-  }), true, 'Expanded scripts must scroll fully into the transcript above the composer');
+    return { script: box.toJSON(), transcript: transcript.toJSON() };
+  });
+  // Chromium rounds scroll offsets while text layout retains fractional pixels.
+  assert.ok(scriptBounds.script.height > 0 && scriptBounds.script.top >= scriptBounds.transcript.top - 1 && scriptBounds.script.bottom <= scriptBounds.transcript.bottom + 1, `Expanded scripts must scroll fully into the transcript above the composer: ${JSON.stringify(scriptBounds)}`);
   await page.screenshot({ path: resolve(artifacts, 'script.png') });
-  await a.locator('article.toolResult summary').click();
   await a.locator('article.toolResult pre').scrollIntoViewIfNeeded();
   await page.screenshot({ path: resolve(artifacts, 'activity.png') });
   // A hostile page may embed the public URL but cannot initialize an agent,

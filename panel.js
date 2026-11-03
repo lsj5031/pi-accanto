@@ -63,7 +63,7 @@ const modelApis = {
   },
 };
 
-const toolLabels = { inspect_tab: 'Read tab', type_in_focused_field: 'Edit focused field', search_page: 'Search this page', read_page_section: 'Read page section', web_search: 'Search the web', read_web_source: 'Read web source', codemode: 'Code Mode' };
+const toolLabels = { inspect_tab: 'Read this page', type_in_focused_field: 'Edit focused field', search_page: 'Search this page', read_page_section: 'Read page section', web_search: 'Search the web', read_web_source: 'Read web source', codemode: 'Code Mode' };
 
 async function conversationRequest(options = {}) {
   const result = await chrome.runtime.sendMessage({ type: 'conversation', tabId: conversationTabId, id: conversationId, ...options });
@@ -100,11 +100,36 @@ function nestedActivity(calls) {
   list.className = 'nested-activity';
   for (const call of calls) {
     const item = document.createElement('li');
-    item.textContent = `${toolLabels[call.name] || call.name} · ${call.status}${call.error ? ` · ${call.error}` : ''}`;
-    if (call.status === 'error') item.dataset.error = 'true';
+    const label = document.createElement('span');
+    label.textContent = toolLabels[call.name] || call.name;
+    const state = document.createElement('span');
+    state.className = 'tool-state';
+    state.textContent = call.status === 'ok' ? 'Complete' : call.status === 'error' ? 'Failed' : 'Running';
+    item.dataset.state = call.status;
+    item.append(label, state);
+    if (call.error) {
+      const error = document.createElement('p');
+      error.textContent = call.error;
+      item.append(error);
+    }
     list.append(item);
   }
   return list;
+}
+
+function toolPreview(name, text) {
+  if (name === 'codemode') text = text.replace(/^Script completed\nWall time [^\n]*\nOutput:\n\s*/, '');
+  try {
+    const result = JSON.parse(text);
+    if (Array.isArray(result?.results)) return `${result.results.length} search results · Snippets only`;
+    if (Array.isArray(result?.matches)) return `${result.matches.length} matches${result.nextOffset !== null ? ' · More available' : ''}`;
+    if (typeof result?.text === 'string') return `${result.title || 'Page'} · ${result.text.length.toLocaleString()} characters read${result.truncated ? ' · Partial' : ''}`;
+    if (name === 'codemode' && result && typeof result === 'object' && !Array.isArray(result)) {
+      const values = Object.entries(result).filter(([, value]) => typeof value === 'number' || typeof value === 'string');
+      if (values.length) return values.map(([key, value]) => `${key}: ${value}`).join(' · ').slice(0, 180);
+    }
+  } catch { /* Plain-text tool output is also valid. */ }
+  return text.replace(/\s+/g, ' ').trim().slice(0, 180) || 'No text output';
 }
 
 function showSources() {
@@ -183,9 +208,29 @@ function render(view) {
   const expanded = new Set([...transcript.querySelectorAll('details[open]')].map((details) => details.dataset.message));
   const focusedMessage = document.activeElement.closest('details[data-message]')?.dataset.message;
   const focusedCopy = document.activeElement.dataset.copyMessage;
+  const calls = new Map();
+  const callKeys = new Map();
+  const resultCalls = new Map();
+  const completedCalls = new Set();
+  for (const entry of entries.slice(Math.max(0, fresh))) {
+    for (const [messageIndex, message] of (entry.model ?? []).entries()) {
+      if (message.role === 'assistant' && Array.isArray(message.content)) {
+        for (const [index, call] of message.content.entries()) {
+          if (call.type !== 'toolCall') continue;
+          calls.set(call.id, call);
+          callKeys.set(call, `${entry.id}:${messageIndex}:${index}`);
+        }
+      } else if (message.role === 'toolResult') {
+        const call = calls.get(message.toolCallId);
+        if (call) { resultCalls.set(message, call); completedCalls.add(call); }
+      }
+    }
+  }
   transcript.replaceChildren();
   let activityGroup;
-  let activityLabels;
+  let activityCount;
+  let activityRunning;
+  let activityStopped;
   for (const entry of entries.slice(Math.max(0, fresh))) {
     if (entry.kind === 'accanto.target') {
       if (transcript.hasChildNodes()) {
@@ -196,7 +241,11 @@ function render(view) {
       }
       continue;
     }
-    for (const [messageIndex, message] of (entry.model ?? []).entries()) {
+    const messages = (entry.model ?? []).flatMap(message => {
+      const calls = message.role === 'assistant' && Array.isArray(message.content) ? message.content.filter(block => block.type === 'toolCall') : [];
+      return calls.length > 1 ? calls.map(call => ({ ...message, content: [call] })) : [message];
+    });
+    for (const [messageIndex, message] of messages.entries()) {
       const text = entry.kind === 'accanto.question' && message.role === 'user'
         ? entry.data.prompt : messageText(message.content) || message.errorMessage;
       if (!text) continue;
@@ -206,31 +255,69 @@ function render(view) {
       role.className = 'message-label';
       role.textContent = message.role === 'user' ? 'You' : 'Pi Accanto';
       const toolCalls = Array.isArray(message.content) ? message.content.filter((block) => block.type === 'toolCall') : [];
+      const pendingCalls = toolCalls.filter(call => !completedCalls.has(call));
+      if (toolCalls.length && !pendingCalls.length) continue;
       const body = messageBody(text, message.role === 'assistant' && !toolCalls.length);
       if (message.role === 'toolResult' || toolCalls.length) {
+        const call = resultCalls.get(message) || pendingCalls[0];
         if (!activityGroup) {
           activityGroup = document.createElement('details');
           activityGroup.className = 'turn-activity';
-          activityGroup.dataset.message = `tools:${entry.id}:${messageIndex}`;
+          activityGroup.dataset.message = call ? `tools:${callKeys.get(call)}` : `tools:${entry.id}:${messageIndex}`;
           activityGroup.open = expanded.has(activityGroup.dataset.message);
           activityGroup.append(document.createElement('summary'), document.createElement('div'));
-          activityLabels = new Set();
+          activityCount = 0;
+          activityRunning = false;
+          activityStopped = false;
           transcript.append(activityGroup);
         }
         const details = document.createElement('details');
-        details.dataset.message = `${entry.id}:${messageIndex}`;
+        details.dataset.message = call ? `call:${callKeys.get(call)}` : `${entry.id}:${messageIndex}`;
         details.open = expanded.has(details.dataset.message);
         const summary = document.createElement('summary');
-        const names = message.role === 'toolResult' ? [message.toolName] : toolCalls.map((call) => call.name);
+        const names = message.role === 'toolResult' ? [message.toolName] : pendingCalls.map((call) => call.name);
         const label = names.map((name) => toolLabels[name] || name).join(' · ');
-        activityLabels.add(label);
-        if (message.isError) activityGroup.dataset.error = 'true';
-        activityGroup.firstChild.textContent = `${[...activityLabels].join(' · ')}${activityGroup.hasAttribute('data-error') ? ' · Failed' : ''}`;
-        summary.textContent = `${label} · ${message.role === 'toolResult' ? message.isError ? 'Failed' : 'Result' : 'Tool call'}`;
+        const failed = Boolean(message.isError);
+        const partialFailure = message.details?.calls?.some(call => call.status === 'error');
+        const slot = view.docs['pi.live']?.tools?.find(slot => slot.callId === call?.id);
+        const running = message.role !== 'toolResult' && slot && slot.status !== 'done';
+        const state = failed ? 'Failed' : partialFailure ? 'Completed with issues' : running ? slot.status === 'pending' ? 'Queued' : 'Running' : message.role === 'toolResult' ? 'Complete' : 'Stopped';
+        activityCount += names.length;
+        activityRunning ||= running;
+        activityStopped ||= state === 'Stopped';
+        if (failed || partialFailure) activityGroup.dataset.error = 'true';
+        activityGroup.firstChild.textContent = `Activity · ${activityCount} ${activityCount === 1 ? 'action' : 'actions'} · ${activityRunning ? 'Running' : activityGroup.hasAttribute('data-error') ? 'Needs attention' : activityStopped ? 'Stopped' : 'Finished'}`;
+        const title = document.createElement('span');
+        title.className = 'tool-title';
+        title.textContent = label;
+        const status = document.createElement('span');
+        status.className = 'tool-state';
+        status.textContent = state;
+        const preview = document.createElement('span');
+        preview.className = 'tool-preview';
+        preview.textContent = message.role === 'toolResult'
+          ? `${call?.arguments?.query ? `“${call.arguments.query}” · ` : ''}${failed ? text.replace(/\s+/g, ' ').slice(0, 180) : toolPreview(message.toolName, text)}`
+          : running ? 'Waiting for this action to finish…' : 'No result was returned.';
+        summary.append(title, status, preview);
         article.classList.add('activity');
         if (toolCalls.length) { article.classList.remove('assistant'); article.classList.add('toolCall'); }
-        article.toggleAttribute('data-error', Boolean(message.isError));
-        details.append(summary, body);
+        article.dataset.state = failed || partialFailure ? 'error' : running ? 'running' : message.role === 'toolResult' ? 'ok' : 'stopped';
+        details.append(summary);
+        if (call) {
+          const inputLabel = document.createElement('p');
+          inputLabel.className = 'tool-section-label';
+          inputLabel.textContent = call.name === 'codemode' ? 'Code' : 'Input';
+          const input = document.createElement('code');
+          input.className = 'tool-input';
+          input.textContent = call.name === 'codemode' ? call.arguments?.code ?? '' : JSON.stringify(call.arguments, null, 2);
+          details.append(inputLabel, input);
+        }
+        if (message.role === 'toolResult') {
+          const outputLabel = document.createElement('p');
+          outputLabel.className = 'tool-section-label';
+          outputLabel.textContent = failed ? 'Error' : 'Output';
+          details.append(outputLabel, body);
+        }
         if (message.details?.calls?.length) details.append(nestedActivity(message.details.calls));
         article.append(details);
       } else {
@@ -276,7 +363,15 @@ function render(view) {
     const role = document.createElement('strong');
     role.className = 'message-label';
     role.textContent = 'Pi Accanto';
-    const body = messageBody(messageText(partial.content), true);
+    const partialCalls = partial.content?.filter(block => block.type === 'toolCall') ?? [];
+    const partialText = partial.content?.filter(block => block.type === 'text').map(block => block.text).join('\n') || '';
+    const body = messageBody(partialText, true);
+    if (partialCalls.length) {
+      const preparing = document.createElement('p');
+      preparing.className = 'tool-preparing';
+      preparing.textContent = `Preparing ${partialCalls.map(call => toolLabels[call.name] || call.name).join(' · ')}…`;
+      body.append(preparing);
+    }
     article.append(role, body);
     transcript.append(article);
   }
