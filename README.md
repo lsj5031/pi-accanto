@@ -1,275 +1,252 @@
 # Pi Accanto
 
-**An AI assistant beside the page you already have open.**
+**A little help, right beside what you're reading.**
 
-Ask questions about a website or PDF, research the web, check a calculation,
-or draft a reply without leaving your browser. *Accanto* is Italian for “beside.”
+Ask about a page, make sense of a PDF, check a total or research a question.
+Accanto lives in a small floating window in Chrome. When you're done, it tucks
+back into a quiet little companion in the corner. *Accanto* means “beside” in Italian.
 
-Pi Accanto runs as a Chrome extension. Bring your own compatible AI model;
-there is no separate Pi process or browser-control server to install.
+[Get started](#get-started) · [Everyday use](#make-yourself-at-home) · [Web search](#search-the-web) · [Privacy](PRIVACY.md)
 
 [![Build and fixture tests](https://github.com/lsj5031/pi-accanto/actions/workflows/ci.yml/badge.svg)](https://github.com/lsj5031/pi-accanto/actions/workflows/ci.yml)
 
-Early release · [MIT license](LICENSE) · [Privacy](PRIVACY.md) ·
-[Contributing](CONTRIBUTING.md)
+## See it in action
 
-![The Accanto companion reading the demo invoice and showing its calculated total](docs/screenshots/companion-answer.png)
+![A tour of Accanto: hover, open, ask, inspect the calculation, minimize and browse history](docs/screenshots/companion-tour.gif)
 
-Actual extension on the included demo invoice, driven by an automated model-response
-fixture. Code Mode reads the page and calculates 3 × $27.50 + $8.25 = $90.75.
-The floating window leaves your page at its full width; minimize it to a small companion button.
+[Watch the walkthrough as a video](docs/media/companion-tour.mp4) for a sharper view.
+The tour shows the real extension: the companion's hover response, a page question,
+the calculation behind the answer, saved chats and moving the window.
 
-## What can I ask it?
+The sample booking is fictional and the replies are scripted for a repeatable demo.
+Page reading and the sandboxed calculation run in the actual extension. These are
+usage demonstrations, not a benchmark of a particular AI model.
 
-| What you want to do | Try asking |
+## What can it help with?
+
+| You're looking at… | Try asking… |
 | --- | --- |
-| Understand a page | “Summarize this page and list the action items.” |
-| Find a detail in a long document | “Find the cancellation fee, including later sections.” |
-| Check the numbers | “Use Code Mode to read the prices and calculate the total. Show your working.” |
-| Research a claim | “Search the web for evidence supporting this claim. Cite your sources.” |
-| Read a PDF | “What are the main obligations? Include page numbers.” |
-| Draft a reply | Focus a normal text field, then ask “Replace this draft with a polite confirmation.” |
+| A booking or order | “What's my total, and when can I cancel?” |
+| A long article | “Summarize the main points. What should I follow up on?” |
+| A contract or PDF | “What do I need to do, and by when? Include page numbers.” |
+| A claim you want to check | “Look for supporting evidence on the web. Cite the sources.” |
+| A draft in a text field | “Replace this with a friendly, concise reply.” |
 
-You can ask follow-up questions naturally. Each message in a page chat includes
-a fresh excerpt of the attached page, so you don't have to keep saying “this page.”
-Pi can search later sections when the initial excerpt isn't enough.
+Follow-ups work naturally: each page-chat message includes a fresh excerpt of the
+attached page. You don't have to repeat “this page.” Accanto can search later
+sections when the first excerpt isn't enough.
 
-Text edits stay in the field for you to review. Pi never clicks Submit.
-Completed responses have a **Copy** button.
+Text replacements stay in the field for you to review. Accanto never clicks Submit.
 
 ## Get started
 
-You need **Chrome**, **Node.js 22 or later**, and access to an
-**AI model with tool calling and streaming**: OpenAI, Anthropic, Google Gemini,
-or an OpenAI-compatible server. You'll need
-its API base URL, exact model ID and API key. Chrome is tested; Edge is not yet verified.
+You'll need **Chrome**, **Node.js 22 or later** to build the extension, and an
+**AI provider's API key**. OpenAI, Anthropic, Google Gemini and OpenAI-compatible
+servers are supported. Your provider may charge for use; a chat subscription
+doesn't include an API key.
 
-### 1. Build and install the extension
+This is an early release installed from source. There is no Chrome Web Store
+installer yet. Node is only needed to build it; no separate server or CLI runs
+while you use Accanto.
+
+### 1. Install in Chrome
 
 1. [Download the source ZIP](https://github.com/lsj5031/pi-accanto/archive/refs/heads/main.zip)
    and extract it, or clone this repository.
-2. Open a terminal in the extracted project folder and run:
+2. Open a terminal in that folder and run:
 
-   ```sh copy Copy Build Commands
+   ```sh
    npm ci
    npm run build
    ```
 
-3. Open `chrome://extensions` in Chrome and turn on **Developer mode**.
-4. Click **Load unpacked** and select the newly created **dist** folder inside
-   the project. Select `dist`, not the project folder itself.
-5. Open Pi Accanto from Chrome's extensions menu. Pin it to the toolbar for easy access.
+3. Open `chrome://extensions` and enable **Developer mode**.
+4. Choose **Load unpacked** and select the **dist** folder created inside the project.
+5. Open a normal webpage, then click Pi Accanto in Chrome's extensions menu.
+   Pin it to the toolbar if you'd like.
 
-Keep the folder in the same location. To update later, download/pull the new
-source, rebuild, and click **Reload** on Pi Accanto at `chrome://extensions`.
+Keep the project folder where it is. To update, download or pull the latest source,
+run the build again, reload the extension at `chrome://extensions`, and refresh
+your webpages.
 
-### 2. Connect your model
+### 2. Connect your AI model
 
-Choose **Connect model** on first use, or the **Settings** icon in the header.
-The floating companion opens settings in a separate extension tab, so API keys
-are entered outside the website.
+Click **Connect model**. Settings open in a separate extension tab, where you
+choose your provider, enter the model ID and API key, and click **Connect**.
+Accept Chrome's request to access that provider if prompted.
 
-1. Choose your **Model API**.
-2. Use the provider's default **API base URL**, or enter your own server's URL.
-3. Enter its exact **Model ID** and **API key**.
-4. Click **Connect** and accept Chrome's request to access that server.
+![Accanto's first-use invitation to connect your model, beside a sample booking](docs/screenshots/companion-first-use.png)
 
-| Model API | Default API base URL | Key and model |
+Choose your provider's native format when available. The base URL fills in for
+OpenAI Responses, Anthropic and Gemini; custom servers need their own URL.
+A green **Connected** confirmation means your settings and model-catalog check
+succeeded. It doesn't send a chat message or guarantee future service availability.
+
+<details>
+<summary>Which model format and URL should I use?</summary>
+
+| Model API | API base URL | What to enter |
 | --- | --- | --- |
-| Chat Completions | Enter your OpenAI-compatible server's URL, usually ending in `/v1` | Your server's key and exact model ID. For OpenAI, use `https://api.openai.com/v1`. |
-| OpenAI · Responses | `https://api.openai.com/v1` | OpenAI API key and model ID, such as `gpt-4.1-mini`. |
-| Anthropic · Messages | `https://api.anthropic.com` | Anthropic API key and model ID, such as `claude-sonnet-4-6`. Do not add `/v1` to this base URL. |
-| Google Gemini | `https://generativelanguage.googleapis.com/v1beta` | Gemini Developer API key and model ID, such as `gemini-2.5-flash`. Vertex AI credentials are not supported. |
+| OpenAI · Responses | `https://api.openai.com/v1` | Your OpenAI API key and an exact model ID available to your account. |
+| Anthropic · Messages | `https://api.anthropic.com` | Your Anthropic API key and model ID. Don't append `/v1`. |
+| Google Gemini | `https://generativelanguage.googleapis.com/v1beta` | Your Gemini Developer API key and model ID. Vertex AI credentials aren't supported. |
+| Chat Completions | Your server's base URL, usually ending in `/v1` | An OpenAI-compatible server's key and model ID. OpenAI also supports this format at `https://api.openai.com/v1`. |
 
-These formats use Pi's upstream provider adapters. A ChatGPT, Claude or Gemini
-chat subscription does not supply an API key. Model availability depends on your account.
-Connect checks the server's model catalog (`/models`, Anthropic's `/v1/models/{id}`,
-or Gemini's `/models/{id}`); it does not send a chat message.
-There is no preset model or bundled key. Your chosen provider may charge for use.
+The model needs streaming and tool calling. These formats use Pi's upstream
+provider adapters. API format, URL and model ID are saved on your device.
+Changing the endpoint or API format requires the corresponding key.
 
-![The companion's first-use screen with one Connect model action](docs/screenshots/companion-first-use.png)
+</details>
 
-The API format, URL and model ID are saved on this device. **API keys last only for the
-browser session**: enter them again after restarting Chrome. Switching to a
-different model endpoint or API format requires its own key.
+**Keys last for the browser session.** Enter them again after restarting Chrome.
+They aren't saved in persistent local storage or shared with the website.
 
-### 3. Ask about a page
+### 3. Ask your first question
 
-Open a website, open Pi Accanto and choose **Allow this site** if offered.
-Accept Chrome's permission prompt, then send a question.
+Choose **Allow this site** if offered, accept Chrome's permission prompt, and ask
+something about the page. The small chip above the input tells you which page
+Accanto is using. **Stop** cancels a reply; **Copy** copies a completed answer.
 
-Chrome remembers site access; you don't need to click the extension icon before
-every read. For fewer prompts, open the header's model settings and choose
-**Website access → Allow all websites**. This is optional and can be removed there.
-Only the attached page is read, even with all-site access. Once a website is
-allowed, a small **Accanto companion** appears in the corner on future visits.
-Click it to chat, drag the grip at the top to move it, and use the bottom-right
-corner to resize. The **−** button or **Escape** minimizes it without ending a reply.
-Right-click the companion button to **Hide on this site**; restore it from
-**Settings → Companion → Restore hidden companions**.
+Once you allow a website, the companion appears automatically on future visits.
+You can optionally enable **Settings → Website access → Allow all websites**.
+This makes access easier; it doesn't attach or read every open tab.
 
-The chip inside the composer identifies the page Pi is using. Open it to choose
-**Web only**, or use the **History** icon for **New chat**, saved conversations and
-**Open in a tab**. The toolbar icon opens the floating companion on webpages,
-including when you've hidden it on that site. That click grants temporary page
-access; automatic appearance on future visits needs a remembered website grant.
-Right-click the companion and choose **Open in a tab** for more room. PDFs,
-Chrome pages and documents that cannot host the companion open Accanto in a
-separate browser tab, keeping the original page attached. Chrome pages cannot
-be read; you can still use web-only chat. Accanto does not use Chrome's sidebar.
+![Accanto reads a sample booking, calculates its total and explains the cancellation deadline](docs/screenshots/companion-answer.png)
 
-Navigating or reloading a website closes that page's agent. Saved history returns
-when you reopen the companion; interrupted replies do not resume automatically.
-For a task that should keep running while you navigate, use **History → Open in a tab**
-before starting the reply. After a browser restart, reattach the page explicitly.
+## Make yourself at home
 
-![History in the floating companion, with a checkmark on the current chat, New chat and Open in a tab](docs/screenshots/companion-history.png)
+The companion stays out of the way until you need it. Hover for its small lift and
+friendly eye change, then click to open. Reduced-motion preferences are respected.
 
-History shows your saved chats directly. The highlighted row and checkmark identify
-the current conversation; choose another row to switch. Longer histories scroll
-inside the menu, keeping **New chat** and **Open in a tab** in place.
+![Close-up of the companion's subtle hover response](docs/screenshots/companion-hover.gif)
 
-![The floating companion's composer expanded to show a multiline draft](docs/screenshots/companion-composer.png)
-
-The composer grows as you type, then scrolls for longer drafts. Sending clears it
-immediately so you can start your next message while Pi replies.
-
-## Set up web search
-
-**Search settings are under Settings → Web search.** Expand it to
-choose a provider. Search is separate from the AI model connection.
-
-| Provider | What you need |
+| Want to… | Here's how |
 | --- | --- |
-| **Exa** (default) | No search account or API key. Uses Exa's shared hosted service; shared limits can make it unavailable. |
-| **TinyFish** | Your [TinyFish Search API key](https://docs.tinyfish.ai/search-api). Select TinyFish, enter the key and click **Save choice**. Your account's quota applies. |
-| **Brave** | Your [Brave Search API key](https://brave.com/search/api/) and a plan with **storage rights**, because search results are saved in conversation history. Select Brave, enter the key, confirm storage rights and click **Save choice**. |
+| Put it away | Click **−** or press **Escape**. A running reply continues while minimized. |
+| Move or resize it | Drag the small grip at the top, or resize from the bottom-right corner. |
+| Start fresh or return to a chat | Open **History** in the header. Choose **New chat** or a saved conversation. |
+| Ask without reading this page | Open the page-context chip and choose **Web only**. |
+| Keep working while you navigate | Choose **History → Open in a tab** before starting the reply. Keep that assistant tab open. |
+| Hide the companion on a website | Right-click the small companion and choose **Hide on this site**. The toolbar can bring it back. |
 
-![Web search expanded with TinyFish selected and its empty API key field visible](docs/screenshots/search-settings.png)
+![The compact history menu, with a current-chat checkmark and a separate Open in a tab action](docs/screenshots/companion-history.png)
 
-Chrome may ask for access to the provider's API. Search keys are session-only,
-just like the model key. **Forget key** removes the selected key and returns
-search to Exa. Saving a key selects the provider; the next search checks its
-credentials and quota. Pi never silently switches providers.
+Long chat lists scroll inside the menu. The input grows with your draft and clears
+as soon as you send, so you can start typing the next question.
 
-Choose **Web only** from the page-context chip to start a task without reading the current tab,
-or ask for web research within an existing page chat. Only the deliberate search
-query is sent to the search provider.
+Each website tab has its own conversation and can work concurrently. Navigating
+or reloading a webpage closes its agent; saved history returns, but an interrupted
+reply doesn't automatically resume. Use **Open in a tab** for work that needs to
+survive navigation. After a browser restart, reattach the page explicitly.
 
-Results first provide snippets. To read a full source, expand **Web sources**,
-choose **Allow source** for that result, then ask Pi to read it. These approvals
-are specific to the task and reset when you change tasks or reopen the panel.
-Some sites can't be fetched directly; open and attach the source page instead.
+PDFs and pages that can't host the floating companion open a separate assistant
+tab. Local PDFs need **Allow access to file URLs** in the extension's Chrome
+settings. Chrome's own pages can't be read. Accanto doesn't use Chrome's sidebar.
 
-If search is unavailable or rate-limited, **Open search in browser** opens the
-query in a normal tab. It does not attach that tab automatically. On the page
-you want to discuss, choose **New chat**, allow the site if needed, and send a message.
+## Search the web
 
-## What is Code Mode?
+Search works out of the box with **Exa's shared service**, with no search key.
+Shared limits sometimes make it unavailable. For your own search account, open
+**Settings → Web search** and select a provider:
 
-Code Mode lets the model write and run a small JavaScript program to read
-approved page/search evidence and calculate from it. It is useful for totals,
-comparisons and combining several reading steps. Expand the activity summary beneath
-an answer, then **Code Mode**, to see the script, output and nested reading activity.
+| Provider | Setup |
+| --- | --- |
+| **Exa** | Default. No search account or key required; shared limits apply. |
+| **TinyFish** | Enter your [TinyFish Search API key](https://docs.tinyfish.ai/search-api), then **Save choice**. |
+| **Brave** | Enter your [Brave Search API key](https://brave.com/search/api/), confirm your plan has **storage rights**, then **Save choice**. Results are saved in chat history. |
 
-The script runs locally in a **QuickJS sandbox**, in a separate browser worker.
-It has no direct page, network, filesystem or credential access. It can call only
-the approved reading/search tools; it cannot edit fields or submit forms.
+![Search settings with TinyFish selected and its empty API key field](docs/screenshots/search-settings.png)
 
-### Try the included invoice demo
+Search keys are session-only too. **Forget key** removes the selected key and
+returns search to Exa. Accanto doesn't silently switch providers when a search fails.
 
-From the project folder, run:
+Search results start with snippets. To let Accanto read a whole source, expand
+**Web sources**, choose **Allow source** for that result, then ask it to read it.
+Approval is for that exact result in that task, and resets when you change tasks
+or reopen the conversation surface.
 
-```sh copy Copy Demo Command
+If a provider is blocked or rate-limited, **Open search in browser** opens the query
+in a normal tab. To discuss a result, open its page and start a chat there; opening
+search doesn't attach the new tab automatically.
+
+## Curious about the calculation?
+
+**Code Mode** lets the model run a short JavaScript program over approved page or
+search evidence. It helps with totals, comparisons and several reading steps.
+Expand the activity below an answer, then **Code Mode**, to see the script and output.
+
+The program runs locally in a QuickJS sandbox in a separate browser worker.
+It can't directly access the page, network, files or API keys, and it can't edit
+fields or submit forms. Only the approved reading and search tools are available.
+
+<details>
+<summary>Try a calculation yourself</summary>
+
+From the project folder, start the included sample page:
+
+```sh
 npx --yes http-server docs/examples -a 127.0.0.1 -p 8123
 ```
 
-Open `http://127.0.0.1:8123/code-mode-invoice.html` in Chrome, open Pi Accanto,
-allow the site and start a **New chat**. Send:
+Open `http://127.0.0.1:8123/code-mode-invoice.html`, allow the site in Accanto,
+start a **New chat**, and ask:
 
-```text copy Copy Invoice Prompt
-Use Code Mode to read the invoice's actual quantity, unit price and delivery, calculate the total, and cite the page URL. Show the inputs and your working. Keep the answer concise.
-```
+> Use Code Mode to read the quantity, unit price and delivery charge. Calculate
+> the total, cite this page and show your working.
 
-The expected total is **$90.75**. Click **Load second invoice** on the page and
-ask “Recalculate using Code Mode with the current invoice.” The new total should
-be **$84.55**. The demo page doesn't display either answer, so this checks fresh
-page reading as well as calculation. Use **Stop** to cancel a running reply.
+The total should be **$90.75**. Click **Load second invoice** on the page and ask
+it to recalculate; the new total should be **$84.55**. The page doesn't display
+either answer, so this also checks that Accanto reads the updated page.
 
-## PDFs and multiple conversations
+</details>
 
-**PDFs:** Open a text-based PDF directly in Chrome and ask your question. Pi
-extracts its text and can cite physical page numbers. Local PDFs also need
-**Allow access to file URLs** in Pi Accanto's details at `chrome://extensions`.
-Scanned PDFs need OCR, which is not supported. For an embedded viewer, open the
-original PDF in its own tab.
+## A few things to know
 
-**Concurrent tasks:** Each website tab has its own default conversation and can
-run its agent concurrently. Minimizing preserves its running reply. Use **History**
-to resume saved chats. For agents that keep working through page navigation,
-choose **Open in a tab** before starting each reply and keep those agent tabs open.
-Conversations have separate histories, attachments and Code Mode memory. Your model
-server may still queue requests. Closing an agent tab ends its runtime.
-If the same conversation is open elsewhere,
-**Continue here** transfers it to the current panel.
+- **Your chosen model receives your messages and page evidence.** Conversations
+  are stored locally in your Chrome profile and may contain private text. Search
+  queries go to the selected search provider. Read [Privacy](PRIVACY.md).
+- **You stay in control.** Accanto can read, search, calculate and replace ordinary
+  text fields. It doesn't autonomously navigate, click buttons or submit forms.
+- **Some content needs another approach.** Scanned PDFs need OCR, which isn't
+  supported. Password fields are excluded. Login walls, expired links and site
+  restrictions can prevent source reads; long documents have reading limits.
+- **This is an early Chrome release.** Edge and unattended execution with all
+  views closed aren't verified. Model capabilities and account limits vary.
+  See [the roadmap](https://github.com/lsj5031/pi-accanto/issues/1).
 
-## Privacy and current limits
+<details>
+<summary>Model context and output limits</summary>
 
-Page excerpts, extracted PDF text, approved tool results and your messages go to
-the model endpoint you configure. Conversations are saved locally in your browser
-profile and can contain sensitive text. Search queries go to the selected search
-provider. Read [Privacy](PRIVACY.md) before using private documents.
+Native APIs use Pi's bundled model profiles where available. Unknown native
+models use a 128,000-token context and 4,096-token output profile. Chat Completions
+uses the existing reasoning-enabled profile with 262,144 context and 65,536 output
+tokens. These limits aren't editable yet and must suit your server/model.
 
-- Pi can read pages, search, calculate and replace ordinary text fields. It has
-  no screenshot/vision, OCR, general clicking, automatic submission or autonomous navigation.
-- Long pages and PDFs are read within limits; Pi reports omissions. Later HTML
-  sections can be searched, and later PDF pages can be requested. PDF tables and
-  reading order may be imperfect; encrypted PDFs are unsupported.
-- Login requirements, redirects, expired links and site restrictions can prevent
-  reading a source or PDF that you can see in Chrome.
-- Model compatibility varies. Native APIs use Pi's bundled model profiles where
-  available; unknown native models use a 128,000-token context and 4,096-token
-  output profile. Chat Completions keeps its existing reasoning-enabled profile
-  with 262,144 context and 65,536 output tokens. These limits are not yet editable.
-- This is an early release. Edge and unattended execution with all views closed
-  are not verified. See [the roadmap](https://github.com/lsj5031/pi-accanto/issues/1)
-  for planned selection explanations, page highlights and table/CSV workflows.
+</details>
 
-## Troubleshooting
+## Need a hand?
 
 | Problem | What to try |
 | --- | --- |
-| **Send** is disabled | Connect your model first. Check the URL, exact model ID and key. |
-| Model returns **403** | Check your server's host/origin policy. It must allow this extension's `chrome-extension://<extension-id>` origin; find the ID at `chrome://extensions`. Keep authentication and origin restrictions enabled. |
-| Pi can't read the page | Choose **Allow this site**, then explicitly attach the page. Chrome's own pages and other extensions' pages cannot be read. |
-| The companion is missing | Click the toolbar icon to open it on this webpage, or restore hidden companions in Settings. Allow the website for automatic appearance on future visits. PDFs and restricted pages open Accanto in a separate tab. |
-| A key disappeared | Keys are deliberately session-only. Re-enter it after restarting Chrome. |
-| Search fails | Check the selected provider, key and quota, or use **Open search in browser**. Exa's shared service can hit its limit. |
-| Another panel owns the conversation | Choose **Continue here**, or return to the owning companion and choose **Open in a tab**. |
-| Want to try it without a model? | Open **Settings → Developer tools**, select **Offline scripted check** and **Connect**. This tests browser tools without AI inference; explicit search/source commands can still access the network. |
+| The companion is missing | Click the extension's toolbar icon. Allow the website for automatic appearance. Restore hidden sites under **Settings → Companion**. |
+| **Send** is disabled | Connect a model in Settings. Check the URL, model ID and API key. |
+| A key disappeared | Re-enter it after restarting Chrome. Keys are deliberately session-only. |
+| Accanto can't read a page | Allow the site and explicitly attach it using the context chip. Chrome and other extensions' own pages can't be read. |
+| Search fails | Check the provider, key and quota, or choose **Open search in browser**. |
+| Another window owns the chat | Choose **Continue here**, or return to the existing companion. |
+| A custom model server returns **403** | Allow this extension's `chrome-extension://<extension-id>` origin in the server's host/origin policy. Find its ID at `chrome://extensions`; keep authentication enabled. |
 
-## For developers
+You can try the browser tools without an AI key under **Settings → Developer tools →
+Offline scripted check → Connect**. Replies are scripted; explicit search/source
+commands can still use the network.
 
-Built on Pi Durable 1.4.0, with bundled QuickJS WASM and PDF.js. Node is needed
-for building/testing only. No native host or separate MCP process runs at runtime.
-Model streaming and tool-call serialization use Pi AI's Chat Completions,
-Responses, Anthropic Messages and Google Generative AI adapters.
-The UI uses locally bundled [Basecoat](https://basecoatui.com/) components with
-the Accanto sage theme; it does not load scripts, fonts or styles from a CDN.
+## Contributing
 
-```sh copy Copy Test Commands
-npm ci
-npx playwright install chromium
-npm run build
-npm run test:fixtures
-```
+Built with Pi Durable, Pi AI, QuickJS and PDF.js, with locally bundled
+[Basecoat](https://basecoatui.com/) controls. No remote scripts, fonts or styles
+are loaded for the UI. See [Contributing](CONTRIBUTING.md) for build/test commands,
+optional live checks and the boundaries to preserve.
 
-On Linux, use `npx playwright install --with-deps chromium`. CI runs the five
-fixture suites on Ubuntu 24.04 with Node 22; no model/search keys are required.
-See [Contributing](CONTRIBUTING.md) for individual suites, optional live/native
-checks, environment settings and test boundaries.
-
-Original source and companion artwork are [MIT licensed](LICENSE). Bundled dependencies
-retain their own licenses; read [Third-party notices](THIRD_PARTY_NOTICES.md)
-before distributing a prebuilt extension. The `private` npm flag prevents accidental
-npm publication and does not restrict the source license.
+Original code and companion artwork are [MIT licensed](LICENSE). Bundled packages
+retain their own licenses; see [Third-party notices](THIRD_PARTY_NOTICES.md)
+before distributing a prebuilt extension.
