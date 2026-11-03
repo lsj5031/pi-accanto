@@ -1,521 +1,236 @@
 # Pi Accanto
 
-A little help, right beside your tab. **Accanto** is Italian for “beside” or
-“next to.”
+**An AI assistant beside the page you already have open.**
 
-An extension-only Pi Durable 1.4.0 assistant for Chrome/Edge. No native host,
-BrowserMCP or separate Pi process is needed. Code Mode runs locally bundled
-QuickJS WASM in a dedicated browser worker. Node is used only to build and test
-the extension, not at runtime.
+Ask questions about a website or PDF, research the web, check a calculation,
+or draft a reply without leaving your browser. *Accanto* is Italian for “beside.”
 
-Early release · [MIT license](LICENSE) · [Data and privacy](PRIVACY.md) ·
-[Contributing](CONTRIBUTING.md) · [Third-party notices](THIRD_PARTY_NOTICES.md)
+Pi Accanto runs as a Chrome extension. Bring your own compatible AI model;
+there is no separate Pi process or browser-control server to install.
 
-## What you can do today
+[![Build and fixture tests](https://github.com/lsj5031/pi-accanto/actions/workflows/ci.yml/badge.svg)](https://github.com/lsj5031/pi-accanto/actions/workflows/ci.yml)
 
-Ask about the tab you already have open, keep a sequence of follow-up questions
-attached to it, and prepare text without leaving the page.
+Early release · [MIT license](LICENSE) · [Privacy](PRIVACY.md) ·
+[Contributing](CONTRIBUTING.md)
 
-| Task | Example prompt | Current behavior |
-| --- | --- | --- |
-| Understand a page | “What is the unit price?” | Includes a fresh HTML excerpt of up to 4,000 characters with every message; content later on the page may be omitted. |
-| Find a passage | “Find the cancellation fee, including later sections.” | Searches visible HTML text beyond the initial excerpt and returns bounded passages and offsets. |
-| Check an invoice | “Use Code Mode to calculate the total including delivery and show your working.” | QuickJS scripts compose approved reading tools and calculate from their results. |
-| Research the web | Choose **Web research**, then “Search the web for this claim.” | Uses keyless Exa for sourced excerpts, with **Open search in browser** when unavailable. TinyFish and Brave are optional; individual source reads require approval. |
-| Read a PDF | “What is the total, and which pages support it?” | Extracts text with physical page references from direct online or local PDFs, within the limits below. |
-| Prepare a message | “Replace the focused field with a polite reply confirming this amount.” | Replaces an ordinary text input or textarea and reads back the result; it never clicks Submit. |
-| Continue a task while browsing | “Check that amount again against the invoice.” | Keeps using the attached tab even when another tab is active. |
-| Change tasks explicitly | Choose **Chat about this tab** when browsing another page, or **New chat**. | Switching pages keeps earlier messages visible with fresh model context. New chat clears the visible conversation and attaches on the next send. |
+![Pi Accanto reading a demo invoice and calculating its total with Code Mode](docs/screenshots/conversation-read.png)
 
-The current tools are **`inspect_tab`**, **`search_page`**, **`read_page_section`**,
-**`web_search`**, **`read_web_source`**, **`codemode`**, and
-**`type_in_focused_field`**. There is no screenshot/vision, OCR, general clicking,
-or autonomous navigation. Chrome's native PDF viewer
-is supported through text extraction; arbitrary rich-text editors are not.
-Chrome has been tested; Edge compatibility is not yet verified.
+Actual Chrome sidebar, using a real model on the included demo invoice.
+The total is calculated from the page's inputs: 3 × $27.50 + $8.25 = $90.75.
 
-## Where we want to take it
+## What can I ask it?
 
-Web search, HTML page search and Code Mode are implemented, with verification
-limits described below. The following remain planned capabilities:
+| What you want to do | Try asking |
+| --- | --- |
+| Understand a page | “Summarize this page and list the action items.” |
+| Find a detail in a long document | “Find the cancellation fee, including later sections.” |
+| Check the numbers | “Use Code Mode to read the prices and calculate the total. Show your working.” |
+| Research a claim | “Search the web for evidence supporting this claim. Cite your sources.” |
+| Read a PDF | “What are the main obligations? Include page numbers.” |
+| Draft a reply | Focus a normal text field, then ask “Replace this draft with a polite confirmation.” |
 
-- **Explain a selection:** start from highlighted text and its surrounding context.
-- **Show the evidence:** jump to a relevant HTML passage and add a removable
-  highlight. Current page search returns excerpts without changing the page.
-- **Make tables useful:** extract structured rows, verify totals in a sandbox,
-  and offer CSV downloads.
-- **Compare and prepare:** explore explicitly attached multi-tab comparisons,
-  local snapshot diffs, previewed form filling, and reversible page annotations.
-- **Repeat useful tasks:** explore saved recipes that can pause for missing
-  information, without promising background execution after the sidebar closes.
+You can ask follow-up questions naturally. Each message in a page chat includes
+a fresh excerpt of the attached page, so you don't have to keep saying “this page.”
+Pi can search later sections when the initial excerpt isn't enough.
 
-For example: “Where does this contract say I pay that fee?”, “Turn this pricing
-table into a CSV and check its totals”, or “Compare this invoice with the quote
-I attached.” Highlighting, export, and explicit multi-tab comparison workflows
-still need implementation. Code Mode uses the upstream Pi Durable integration;
-the build explicitly bundles its worker and QuickJS binary.
+Text edits stay in the field for you to review. Pi never clicks Submit.
+Completed responses have a **Copy** button.
 
-Track the proposed tools, examples, and acceptance criteria in
-[the capability roadmap (#1)](https://github.com/lsj5031/pi-accanto/issues/1).
+<details>
+<summary>See Copy confirmation</summary>
 
-## Screenshots
+![Pi Accanto confirming that the real model's invoice answer was copied](docs/screenshots/conversation-copy.png)
 
-Read and calculate from an existing tab with the real model in Chrome's sidebar.
+</details>
 
-![Pi Accanto reading an invoice and calculating its total in the Chrome sidebar](docs/screenshots/conversation-read.png)
+## Get started
 
-Replace a focused text field, verify the result, and leave the form unsubmitted.
+You need **Chrome**, **Node.js 22 or later**, and access to an
+**OpenAI-compatible model server with tool calling and streaming**. You'll need
+its API base URL, exact model ID and API key. Chrome is tested; Edge is not yet verified.
 
-![Pi Accanto updating the focused customer message and confirming the edit without submitting](docs/screenshots/conversation-edit.png)
+### 1. Build and install the extension
 
-Completed answers include **Copy**, with confirmation after copying the original
-Markdown. This capture uses the explicitly labeled offline scripted check in an
-extension tab at sidebar width; it performs no AI inference.
+1. [Download the source ZIP](https://github.com/lsj5031/pi-accanto/archive/refs/heads/main.zip)
+   and extract it, or clone this repository.
+2. Open a terminal in the extracted project folder and run:
 
-![Pi Accanto confirming that the scripted response was copied](docs/screenshots/conversation-copy.png)
+   ```sh copy Copy Build Commands
+   npm ci
+   npm run build
+   ```
 
-When you browse another tab, a contextual suggestion offers **Chat about this tab**.
-The composer continues naming the original page until you explicitly switch.
-This narrow-layout capture uses the offline scripted provider.
+3. Open `chrome://extensions` in Chrome and turn on **Developer mode**.
+4. Click **Load unpacked** and select the newly created **dist** folder inside
+   the project. Select `dist`, not the project folder itself.
+5. Open Pi Accanto from Chrome's extensions menu. Pin it to the toolbar for easy access.
 
-![Pi Accanto offering a new task on another tab while keeping the invoice attached](docs/screenshots/conversation-switch.png)
+Keep the folder in the same location. To update later, download/pull the new
+source, rebuild, and click **Reload** on Pi Accanto at `chrome://extensions`.
 
-## Try it
+### 2. Connect your model
 
-Use Node.js 22 or later. Run `npm ci` and `npm run build` to create the extension
-bundle, including dependency license notices. Install the entire `dist/` directory.
+Open the control at the top right of Pi Accanto's header. On a fresh install,
+it says **Set up model**.
 
-### Model setup
+1. Leave **Provider** set to **OpenAI-compatible model**.
+2. Enter your server's **API base URL**, usually ending in `/v1`.
+3. Enter its exact **Model ID** and **API key**.
+4. Click **Connect** and accept Chrome's request to access that server.
 
-Open **Model connection** from the header. Choose **OpenAI-compatible model**,
-enter the server's **API base URL** (including `/v1` if required), its **Model ID**
-and **API key**, then click **Connect**. Accept Chrome's host permission prompt
-for the server. The connection check requires `/models` to list the exact model
-ID; replies use streaming chat completions with tool calls. Base URLs must be
-HTTP(S), without embedded credentials, query parameters or fragments.
+The connection check requires the server's `/models` endpoint to list your model.
+There is no preset model or bundled key. Your chosen provider may charge for use.
 
-The endpoint and model ID are saved on this device and shared across
-conversations. Existing agents keep their current connection until reloaded;
-stop a reply before changing its model. Keys stay in `chrome.storage.session`,
-are not bundled or written to conversation history, and must be entered again
-after a browser restart. Changing the endpoint requires entering its key;
-Pi does not reuse the previous endpoint's session key. Failed connection checks
-leave the saved settings intact. Fresh installations have no preconfigured
-model endpoint or model ID and do not contact a personal LAN server. Explicitly
-saved connections survive upgrades; installations that relied on the old implicit
-endpoint must enter their connection once. Unscoped legacy keys are not reused.
+![Fresh installation showing the model URL, model ID and API key fields](docs/screenshots/model-setup.png)
 
-Your server must accept requests from the unpacked extension's
-`chrome-extension://<extension-id>` origin. Find its ID at `chrome://extensions`;
-moving the checkout may change it. HTTP 403 can indicate a server origin/host
-policy rejection. Keep authentication and origin restrictions enabled; Pi does
-not bypass them. The API key field does not enable authentication on the server.
-The adapter currently uses the existing reasoning-enabled model profile with
-262,144 context and 65,536 output token limits; arbitrary OpenAI-compatible
-servers and models have not all been tested. Profile capabilities and token
-limits are not yet editable in settings.
+The URL and model ID are saved on this device. **API keys last only for the
+browser session**: enter them again after restarting Chrome. Switching to a
+different model endpoint requires its own key.
 
-To explore the UI and browser tools without a model, select **Offline scripted
-check** and **Connect**. This mode performs no AI inference; see the scripted
-commands below. Search/source commands can still make network requests.
+### 3. Ask about a page
 
-### Install and attach a page
+Open a website, open Pi Accanto and choose **Allow this site** if offered.
+Accept Chrome's permission prompt, then send a question.
 
-The built extension is in `dist/`. In Chrome's `chrome://extensions` (or Edge's
-`edge://extensions`), enable Developer mode, choose **Load unpacked**, and select
-this checkout's `dist` directory. Keep its location stable if your model server
-allows a specific extension ID.
+Chrome remembers site access; you don't need to click the extension icon before
+every read. For fewer prompts, open the header's model settings and choose
+**Website access → Allow all websites**. This is optional and can be removed there.
+Only the attached page is read, even with all-site access.
 
-Open a disposable website and open Pi Accanto from Chrome's side panel or its
-toolbar action (Alt+Shift+P if available). If **Allow this site** appears, choose
-it and accept Chrome's permission prompt. Chrome remembers this site's access;
-revoke it in the extension's site-access settings whenever you want. The toolbar
-action remains an alternative that grants temporary `activeTab` access.
-Your first send attaches the conversation to that tab. Follow-ups keep using it
-even when you browse other tabs; the composer names the attachment. To change
-tasks, choose **Allow this site** if needed, then **Chat about this tab**.
-This keeps earlier tasks visible but starts fresh model context. The suggestion
-disappears when you return to the conversation's page, so normal follow-ups need
-no tab decision. An unavailable attachment offers **Use this page** instead.
-**New chat** clears the visible conversation and model context immediately,
-without requiring access to the current tab. Your next send attaches to the
-page you are viewing then (older history stays in local storage).
+The page named above the composer is the one Pi is using. Follow-ups stay with
+it while you browse elsewhere. Choose **Chat about this tab** to switch pages,
+or **New chat** to start fresh. After a browser restart, reattach the page;
+saved conversations remain available in the conversation picker.
 
-Attachment survives panel reloads. A closed tab, lost permission, navigation
-to another origin, or browser restart makes it unavailable; Pi never switches
-to another tab automatically. Return to that page, allow its site if needed,
-and explicitly attach again to recover. Normal navigation within the attached
-origin stays in the same task.
+## Set up web search
 
-Every message in an HTML page chat includes a fresh excerpt of up to 4,000
-characters from the attached page, plus its title and URL. You can ask “What is
-the unit price?” without saying “this page.” Hidden text and form fields are
-excluded from this automatic excerpt; the model can search/read later sections
-with tools. PDF chats include document identity and use `inspect_tab` for PDF
-text. **Web research** includes no attached-page excerpt. Only your question is
-shown as your chat bubble; the excerpt stays in the model's context and local
-conversation history.
+**Search settings are under Web search, below the page controls.** Expand it to
+choose a provider. Search is separate from the AI model connection.
 
-### Page permissions: what Chrome remembers
+| Provider | What you need |
+| --- | --- |
+| **Exa** (default) | No search account or API key. Uses Exa's shared hosted service; shared limits can make it unavailable. |
+| **TinyFish** | Your [TinyFish Search API key](https://docs.tinyfish.ai/search-api). Select TinyFish, enter the key and click **Save choice**. Your account's quota applies. |
+| **Brave** | Your [Brave Search API key](https://brave.com/search/api/) and a plan with **storage rights**, because search results are saved in conversation history. Select Brave, enter the key, confirm storage rights and click **Save choice**. |
 
-You do **not** need to click the toolbar icon before every page read. Choose
-**Allow this site** in the sidebar and accept Chrome's prompt once for each
-site you want to use. That host permission persists across conversations,
-tabs and browser restarts until revoked in Chrome's extension site-access
-settings. A different host, such as a subdomain, may need its own grant.
-Restoring a page attachment after browser restart is a separate step; it does
-not mean the site permission was forgotten.
+![Web search expanded with TinyFish selected and its empty API key field visible](docs/screenshots/search-settings.png)
 
-| Access | How it is granted | Lifetime and scope |
-| --- | --- | --- |
-| Attached website content | **Allow this site** and Chrome's prompt | Remembered site grant, shared across conversations. Only the explicitly attached tab supplies page context. |
-| All ordinary websites (optional) | **Model connection → Website access → Allow all websites** and Chrome's prompt | Remembered HTTP(S) grant across conversations and browser restarts. No automatic reading or attachment of other tabs. |
-| Temporary website content | Toolbar icon or its keyboard shortcut (`activeTab`) | Temporary access to that tab; may be lost when the tab closes or navigates to another origin. |
-| Search-result source | **Allow source** for an exact result URL | Task-specific approval plus a Chrome host grant. The host grant persists; the exact-source approval resets on task change or panel restart. |
-| Local PDFs | **Allow access to file URLs** in extension details | Separate Chrome setting; only PDF files are supported. |
-| Tab titles and URLs | Required `tabs` permission at installation | Metadata access, not permission to read website content. |
+Chrome may ask for access to the provider's API. Search keys are session-only,
+just like the model key. **Forget key** removes the selected key and returns
+search to Exa. Saving a key selects the provider; the next search checks its
+credentials and quota. Pi never silently switches providers.
 
-Site-by-site access remains the default. For fewer prompts, choose **Allow all
-websites** in settings and approve Chrome's request once. **Remove all-site
-access** returns to site-by-site access; you may need to allow individual sites
-again. Chrome may restore previously approved access without showing a second
-native prompt. All-site access does not bypass exact-source approvals, attach
-unrelated tabs, or enable local files or browser-internal pages such as
-`chrome://`. The legacy model server, Exa MCP origin and file URL pattern remain
-declared as required host permissions; custom model origins are requested when
-connecting. Chrome can clear covered model/search host grants when broad access
-is removed, including hosts declared in the manifest. Pi then asks you to confirm
-access to its model and search services in Chrome, without restoring arbitrary
-websites. If you decline, reconnect the model and save the search provider when
-you want those services again.
+Choose **Web research** to start a conversation without reading the current tab,
+or ask for web research within an existing page chat. Only the deliberate search
+query is sent to the search provider.
 
-If **Allow this site** keeps appearing on the same host after you accepted it,
-check that Chrome still grants the extension access to that site. Reopening a
-sidebar after using only the toolbar's temporary grant can require access again.
+Results first provide snippets. To read a full source, expand **Web sources**,
+choose **Allow source** for that result, then ask Pi to read it. These approvals
+are specific to the task and reset when you change tasks or reopen the panel.
+Some sites can't be fetched directly; open and attach the source page instead.
 
-### Independent conversations and concurrent agents
+If search is unavailable or rate-limited, **Open search in browser** opens the
+query in a normal tab. It does not attach that tab automatically. On the page
+you want to discuss, choose **New chat**, allow the site if needed, and send a message.
 
-Each browser tab gets its own default conversation. The **Conversation** picker
-above the page context lets you resume saved conversations; it does not combine
-their histories. Conversations have separate databases, runtime locks, page
-attachments, source approvals and Code Mode memory. Model/search configuration
-and site permissions are shared across the browser profile.
+## What is Code Mode?
 
-For concurrent work, choose **Open in tab** before starting a reply in each
-conversation. It moves that conversation into an ordinary browser tab and
-restores its history. Keep those agent tabs open while you work elsewhere:
-Agent A can research a contract while Agent B calculates an invoice. Stop or
-handoff in one conversation does not affect the other. Your model endpoint may
-queue simultaneous requests if it cannot serve them in parallel.
+Code Mode lets the model write and run a small JavaScript program to read
+approved page/search evidence and calculate from it. It is useful for totals,
+comparisons and combining several reading steps. Expand the **Code Mode** tool
+entries in the conversation to see the script, its output and nested reading activity.
 
-Chrome can pause a hidden tab-specific side panel, so hidden sidebars are not
-the execution surface for long concurrent runs. **Open in tab** completes the
-ownership handoff before activating the new tab. Closing an agent tab ends its
-runtime; unattended execution with all its views closed is not supported.
+The script runs locally in a **QuickJS sandbox**, in a separate browser worker.
+It has no direct page, network, filesystem or credential access. It can call only
+the approved reading/search tools; it cannot edit fields or submit forms.
 
-After updating, reload the extension at `chrome://extensions`. History from
-the earlier single-conversation build remains in **Earlier conversation** in
-the picker. Browser restart invalidates old page attachments; choose a saved
-conversation, then explicitly attach a page again. Saved history is retained.
+### Try the included invoice demo
 
-If another panel has the conversation open, choose **Continue here**. Pi stops
-any running reply, closes the other panel's runtime, and restores saved history
-here. The other panel becomes inactive and can take the conversation back with
-the same action. One panel writes each conversation at a time; different
-conversations can run concurrently. If its owning sidebar is hidden, return to
-that website and use **Open in tab** there before moving the conversation.
-
-Ask a page question, or focus a normal text input/textarea and ask the assistant
-to replace its text.
-Editing emits input/change events but never clicks Submit. Websites can react
-to those events, so use a disposable page.
-
-The Conversation UI defaults to light, including on a dark system theme.
-Replies and the composer use 16px text, explicitly overriding Chrome’s smaller
-extension-body default; labels use 14px and supporting text uses 13px.
-Open the model control in the header for connection settings. Tool calls and
-results are expandable; assistant replies render sanitized Markdown without
-embedded images. Completed replies have a **Copy** button that copies the original
-response Markdown, with success or failure feedback. Ctrl+Enter (or Cmd+Enter)
-sends; Enter inserts a new line.
-Scrolling up pauses automatic following while new text arrives. Stop replaces
-Send during a run, and completed instructions clear without erasing a new draft.
-
-## Page search, web research and Code Mode
-
-**Page search** stays on the attached tab. `search_page` finds literal,
-case-insensitive text in up to 500,000 visible HTML characters, returns at most
-10 excerpts and a continuation offset, and excludes form fields and inaccessible
-frames. `read_page_section` reads a 4,000-character section at an offset. These
-offsets belong to the current text snapshot; they are not durable anchors or
-highlights. PDF reading continues to use `inspect_tab` with physical page numbers.
-
-**Web search** defaults to [Exa's hosted MCP](https://exa.ai/docs/reference/exa-mcp)
-without an account or API key. Only its MCP origin is granted at installation.
-The extension calls `web_search_exa` directly over HTTPS; there is no Node MCP
-server, cookie extraction or browser helper. This follows the keyless approach
-in [pi-web-access](https://github.com/nicobailon/pi-web-access), while retaining
-Pi Accanto's explicit source approvals and extension-only runtime.
-
-Exa's shared free-plan limits apply. HTTP 200 can still contain a rate-limit or
-tool error; these, network failures and unexpected response formats are reported
-as failures, never as empty results or source evidence. Choose **Open search in
-browser** to open the query in a normal DuckDuckGo tab. On a page you choose,
-choose **New chat**, then **Allow this site** if offered; your next message attaches
-that page. Opening browser search does not automatically read or attach its
-results. Pi does not bypass CAPTCHAs, retry rate
-limits or silently switch providers.
-
-**Live verification:** a keyless request from the extension origin returned
-three real MDN results; the final production-tool check returned six real results
-and fetched MDN only after explicit source approval. Earlier production-tool
-requests hit Exa's shared limit and correctly offered browser search. Live
-success does not guarantee shared-pool availability. Captured-response replay
-and synthetic protocol fixtures are recorded separately from real searches.
-
-**TinyFish** is optional. Expand **Web search**, select **TinyFish**, enter your
-own API key, then choose **Save choice**. Chrome requests access to its search
-API origin. Requests use the [TinyFish Search API](https://docs.tinyfish.ai/search-api)
-and your account quota; consult its current plans for usage and billing limits.
-An additional authenticated extension-origin check, using the user's existing
-key with permission, returned HTTP 200 and six real results with excerpts.
-Session-only storage, cleared input, cookieless requests and **Forget TinyFish
-key** were checked. No key is bundled or included in evidence. Invalid-key
-rejection and synthetic result fixtures are recorded separately.
-
-Brave's `/res/v1/web/search` API is also optional. Expand **Web search**, select
-**Brave**, enter your own key and confirm your plan includes storage rights,
-then choose **Save choice**. Chrome asks for access to Brave's API origin. The key stays
-in `chrome.storage.session`, is cleared from the input, and can be removed with
-**Forget Brave key** (or **Forget TinyFish key**). Forgetting the selected key
-explicitly returns search to Exa. Enabling saves configuration; the next search checks credentials
-and quota. A valid key with storage rights is required: the application saves
-results in local conversation history and Code Mode journals. See
-[Brave's plans](https://brave.com/search/api/) and
-[terms](https://api-dashboard.search.brave.com/documentation/resources/terms-of-service).
-
-Choose **Web research** to start a fresh model context without attaching or reading
-a tab. You can also ask for web research about the existing attached page.
-Only intentional query text is sent to the selected provider; the tool never automatically sends
-page text or field values. Results contain titles, URLs, snippets and dates when
-available. Snippets are explicitly marked as search evidence, not full-page reads.
-
-Expand **Web sources**, choose **Allow source** for each exact URL you want read,
-then ask Pi to read the allowed sources. Chrome requests that source's host access;
-the application additionally restricts reading to the exact approved URL in this
-task, even if Chrome already grants its origin. Up to 30 sources can be approved
-per task. Source reads send no cookies, reject redirects, accept public HTML/plain
-text, download at most 512,000 bytes, and return up to 12,000 characters with an
-omission notice. Scripts, forms and embedded documents are excluded. A source
-requiring login, JavaScript rendering, redirects or PDF extraction may fail; open
-and attach it separately where supported. Searching and fetching never attach,
-navigate or inspect unrelated tabs. Approvals reset on task changes or panel
-restart; browser host grants alone do not restore them.
-
-**Code Mode** uses `@earendil-works/pi-durable/codemode` and the portable upstream
-QuickJS runtime through a dedicated worker. It can compose the five reading/search
-tools and calculate from their results. Editing is model-only and is never exposed
-to scripts; model-generation helpers are disabled. Scripts have no direct DOM,
-Chrome APIs, network, credentials, Node or filesystem access. Each run has a
-32 MiB VM limit, a 20,000-poll interrupt budget and a 30-second host deadline.
-Stop cancels nested calls and terminates the worker; a subsequent run uses a new
-worker. Script code, selected output, nested call status and failures remain
-visible. Large output is bounded by upstream limits; there is no filesystem for
-overflow files, so do not rely on omitted output being downloadable.
-
-Upstream deterministic journaling and `store`/`load` are retained within a task.
-Starting a new task atomically clears sandbox memory with the model context head.
-Closing the panel stops its worker; interrupted runs do not acquire new source
-approvals on reopening. Only reading tools are exposed and each nested call keeps
-its own authorization and replay policy. No exactly-once guarantee is made for
-external side effects, and scripts cannot perform them through the approved tools.
-
-### Try Code Mode on an invoice
-
-Code Mode runs **beside** the page, in an isolated worker. The model writes a
-script, the script calls an approved reader such as `tools.inspect_tab({})`,
-and JavaScript calculates from the returned text. `text(...)` returns selected
-results to the model. Expand **Code Mode · Tool call** to see the script, and
-**Code Mode · Result** to see its output and nested reading activity.
-
-A disposable [invoice demo](docs/examples/code-mode-invoice.html) is included.
-Serve it over HTTP from this checkout (local HTML files are not supported):
+From the project folder, run:
 
 ```sh copy Copy Demo Command
 npx --yes http-server docs/examples -a 127.0.0.1 -p 8123
 ```
 
-Open `http://127.0.0.1:8123/code-mode-invoice.html`, open Pi Accanto, allow this
-site if asked, and start a **New chat**. Send:
+Open `http://127.0.0.1:8123/code-mode-invoice.html` in Chrome, open Pi Accanto,
+allow the site and start a **New chat**. Send:
 
 ```text copy Copy Invoice Prompt
-Use Code Mode to read the invoice's actual quantity, unit price and delivery, calculate the total, and cite the page URL. Show the inputs and your working.
+Use Code Mode to read the invoice's actual quantity, unit price and delivery, calculate the total, and cite the page URL. Show the inputs and your working. Keep the answer concise.
 ```
 
-The first invoice is 3 × $27.50 + $8.25 = **$90.75**. Click **Load second
-invoice** in the page, then ask “Recalculate using Code Mode with the current
-invoice.” It must read again and calculate 4 × $19.60 + $6.15 = **$84.55**.
-The page does not display either answer. This checks that Pi reads fresh inputs
-and executes a calculation instead of repeating a remembered total. The
-research suite exercises this same demo, including its changed values, and
-separately rejects editing/direct browser APIs and verifies Stop and limits.
+The expected total is **$90.75**. Click **Load second invoice** on the page and
+ask “Recalculate using Code Mode with the current invoice.” The new total should
+be **$84.55**. The demo page doesn't display either answer, so this checks fresh
+page reading as well as calculation. Use **Stop** to cancel a running reply.
 
-## Reading PDFs
+## PDFs and multiple conversations
 
-Open a text-based PDF directly in Chrome and open Pi Accanto. Allow its site if
-requested, then send your question (or choose **Chat about this tab** when changing tasks).
-The extension detects Chrome’s PDF document type, including online URLs without
-a `.pdf` suffix, fetches the original document with existing browser credentials,
-and extracts text with bundled PDF.js 6.5.438 and a bundled worker. It does not
-read the viewer DOM, load remote scripts, or use a native helper.
+**PDFs:** Open a text-based PDF directly in Chrome and ask your question. Pi
+extracts its text and can cite physical page numbers. Local PDFs also need
+**Allow access to file URLs** in Pi Accanto's details at `chrome://extensions`.
+Scanned PDFs need OCR, which is not supported. For an embedded viewer, open the
+original PDF in its own tab.
 
-Local `file://` PDFs additionally require **Allow access to file URLs** in
-Pi Accanto’s details at `chrome://extensions`. Chrome controls that setting;
-the extension explains when it is missing. Local attachments bind to the exact
-file URL as well as tab ID and browser session, so navigating to a different
-local file requires an explicit attachment change.
+**Concurrent tasks:** Each website tab has its own default conversation. Use the
+conversation picker to resume one. For agents that keep working while you browse,
+choose **Open in tab** before starting each reply and keep those agent tabs open.
+Conversations have separate histories, attachments and Code Mode memory. Your model
+server may still queue requests. Chrome can pause hidden sidebars; closing an
+agent tab ends its runtime. If the same conversation is open elsewhere,
+**Continue here** transfers it to the current panel.
 
-Each read downloads at most 32 MiB and returns up to 8 physical PDF pages and
-16,000 text characters, with page numbers, partial-page flags and notices when
-anything is omitted. Pi can call `inspect_tab` with `start_page` to read later
-pages. Text beyond the character limit on a single dense page is omitted.
-Fetching and extraction time out after 30 seconds; Stop cancels a read.
-Extracted text and its page references are saved in the local conversation,
-then supplied to the configured model when answering. Full PDF bytes stay in
-the extension reader and are not sent to the model.
+## Privacy and current limits
 
-Scanned/image-only and blank pages return an explicit **No extractable text**
-notice. OCR and vision are unavailable. PDF editing and password-protected
-documents are unsupported. Reading order and tables may be imperfect.
-Authentication, expired links, cookie restrictions, redirects, HTTP errors and
-damaged documents can prevent rereading a PDF that Chrome already displays;
-the reader reports failure instead of inventing text. Redirects are rejected:
-open the final original PDF URL directly. Embedded, browser-internal, extension,
-`blob:` and `data:` viewers require opening the original PDF in its own ordinary
-HTTP(S) or file tab. HTML inspection and focused-field editing still work normally.
+Page excerpts, extracted PDF text, approved tool results and your messages go to
+the model endpoint you configure. Conversations are saved locally in your browser
+profile and can contain sensitive text. Search queries go to the selected search
+provider. Read [Privacy](PRIVACY.md) before using private documents.
 
-PDF fetches use only the validated attached document URL and results are
-discarded if the tab changes while reading. Scripts and workers stay restricted
-to the extension bundle; `wasm-unsafe-eval` permits the bundled QuickJS runtime.
+- Pi can read pages, search, calculate and replace ordinary text fields. It has
+  no screenshot/vision, OCR, general clicking, automatic submission or autonomous navigation.
+- Long pages and PDFs are read within limits; Pi reports omissions. Later HTML
+  sections can be searched, and later PDF pages can be requested. PDF tables and
+  reading order may be imperfect; encrypted PDFs are unsupported.
+- Login requirements, redirects, expired links and site restrictions can prevent
+  reading a source or PDF that you can see in Chrome.
+- Model compatibility varies. The current adapter uses a reasoning-enabled
+  profile with 262,144 context and 65,536 output token limits; these are not yet
+  editable. Use a compatible server/model rather than assuming every API works.
+- This is an early release. Edge and unattended execution with all views closed
+  are not verified. See [the roadmap](https://github.com/lsj5031/pi-accanto/issues/1)
+  for planned selection explanations, page highlights and table/CSV workflows.
 
-**Live workflow verified:** the actual Chrome for Testing 156.0.8078.74 sidebar
-completed three invoice-reading cases ($90.75, $65.35, $47.00), three exact-text
-edits without submission, password exclusion, streaming model requests, Stop,
-recovery after Stop, and history/session-credential restoration after reload.
-The offline regression suite also passes, including browser-restart history
-persistence. These are checks on a disposable fixture, not a claim of
-compatibility with every website.
+## Troubleshooting
 
-For a credential-free browser-tool check, choose **Offline scripted check**
-and click **Connect**. `Type: replacement text` replaces the focused field,
-`Find: literal phrase` searches the attached HTML page, and `Code: JavaScript`
-runs the sandbox. `Search: public query` calls the selected provider (Exa
-needs no key; optional TinyFish and Brave require configuration), and `Read source: URL`
-reads an approved result. Other instructions
-run inspection. This uses Pi's real Faux provider and performs no AI inference.
-Offline and live history use separate IndexedDB databases. Scripted checks can
-still access the network through explicitly invoked search/source tools.
+| Problem | What to try |
+| --- | --- |
+| **Send** is disabled | Connect your model first. Check the URL, exact model ID and key. |
+| Model returns **403** | Check your server's host/origin policy. It must allow this extension's `chrome-extension://<extension-id>` origin; find the ID at `chrome://extensions`. Keep authentication and origin restrictions enabled. |
+| Pi can't read the page | Choose **Allow this site**, then explicitly attach the page. Chrome's own pages and other extensions' pages cannot be read. |
+| A key disappeared | Keys are deliberately session-only. Re-enter it after restarting Chrome. |
+| Search fails | Check the selected provider, key and quota, or use **Open search in browser**. Exa's shared service can hit its limit. |
+| Another panel owns the conversation | Choose **Continue here**, or return to the owning sidebar and choose **Open in tab**. |
+| Want to try it without a model? | Select **Offline scripted check** in model settings and **Connect**. This tests browser tools without AI inference; explicit search/source commands can still access the network. |
 
-## Architecture
+## For developers
 
-- Each sidebar or agent tab owns its conversation's Pi harness for its lifetime.
-- The service worker serializes conversation-catalog and per-tab mapping updates.
-  Tab mappings and the browser-session token live in session storage; conversation
-  IDs/titles are saved locally. Closing a website does not delete its history.
-- Pi Durable calls custom extension tools through `chrome.scripting`.
-- Each conversation has its own IndexedDB database, including inspected text and
-  field contents, with separate live/scripted stores. Earlier stores are retained.
-- A conversation-specific Web Lock prevents two panels from opening the same
-  store concurrently; different conversations have independent locks.
-  **Continue here** requests a cooperative handoff over BroadcastChannel; the
-  old owner aborts/joins its tasks and closes storage before releasing the lock.
-- Attachment is an application entry in Pi Durable's transcript, bound to tab ID,
-  origin, and a browser-session token. Browser tools validate that binding.
-- An explicit target change appends a supported `head: "self"` context boundary.
-  Pi Durable excludes older messages/snapshots from model context without deleting
-  history. The UI reads durable history separately, retaining earlier tasks with
-  separators. Follow-ups never reset or prune the current task's context.
-- Browser tools are not declared replay-safe. Old work is not explicitly resumed
-  on startup; browser-session tokens prevent reusing old tab IDs after restart.
-- Closing the panel destroys its runtime; history is restored on reopening.
-  This does not promise unattended background execution or rollback of an action
-  already dispatched.
+Built on Pi Durable 1.4.0, with bundled QuickJS WASM and PDF.js. Node is needed
+for building/testing only. No native host or separate MCP process runs at runtime.
 
-## Build and checks
-
-```powershell
+```sh copy Copy Test Commands
 npm ci
 npx playwright install chromium
 npm run build
 npm run test:fixtures
 ```
 
-On Linux, install browser system dependencies with
-`npx playwright install --with-deps chromium`. The GitHub Actions fixture job
-uses Node 22 and the Playwright-pinned full Chromium in headless mode. It needs
-no model/search secrets. Test output defaults to ignored `test-results/`.
+On Linux, use `npx playwright install --with-deps chromium`. CI runs the four
+fixture suites on Ubuntu 24.04 with Node 22; no model/search keys are required.
+See [Contributing](CONTRIBUTING.md) for individual suites, optional live/native
+checks, environment settings and test boundaries.
 
-| Suite | What it checks |
-| --- | --- |
-| `npm test` | Fresh-install setup, page reading/editing, copy, attachment/task boundaries, handoff, history, loopback model request routing, credential isolation and restart behavior. |
-| `npm run test:pdf` | Asymmetric PDF extraction, limits/later pages, local-file permission toggles, attachment guards, fetch errors, Stop/recovery and HTML controls. |
-| `npm run test:conversations` | Simultaneous Code Mode workers, independent histories/stores/source approvals, Stop/handoff isolation, picker and reload. |
-| `npm run test:research` | Fixture-only provider protocols/errors, exact-source approval, page search, checked calculations, sandbox limits, partial failures, Stop/recovery and task isolation. Unexpected external HTTP requests are blocked and fail this suite. |
-
-These tests use the actual built extension in disposable browser profiles.
-Scripted providers and synthetic HTTP/SSE responses verify behavior without
-claiming successful inference or live provider availability. Test copies grant
-loopback access so automation can inspect fixtures; they do not prove native
-permission dialogs or toolbar gestures.
-
-### Optional live verification
-
-`npm run test:research:live` adds real-model questions/tool selection, actual
-Exa/MDN requests and invalid-key TinyFish/Brave checks. It requires explicit
-`ACCANTO_MODEL_ENDPOINT`, `ACCANTO_MODEL_ID` and `ACCANTO_MODEL_API_KEY` process
-settings, and never reads a personal Pi config file. Its disposable extension
-uses a documented test-only model relay; the shipped extension does not.
-
-`npm run test:sidebar` uses the same explicit connection settings with direct
-transport in an actual Chrome `SIDE_PANEL`. It preserves toolbar/activeTab,
-native permission, read/edit/copy, PDF and recovery assertions. It requires an
-unlocked interactive Windows desktop. Set `ACCANTO_CHROME_EXECUTABLE` for a
-specific browser executable instead of depending on a machine-specific path.
-Native opening has failed on a locked desktop on both changed and unchanged
-code; that is not a passing native rerun.
-
-Earlier actual Chrome 156 checks exercised direct-model Code Mode, Exa results,
-authenticated TinyFish search, source approval and permission restoration.
-Those historical checks are separate from fixture results. Exa shared quotas
-can fail; authenticated Brave success remains unverified. Live reports can
-contain prompts, source text and screenshots: review before sharing.
-See [CONTRIBUTING.md](CONTRIBUTING.md) for setup and test boundaries and
-[PRIVACY.md](PRIVACY.md) for data handling.
-
-The Beside mark pairs your page with its companion panel. Editable artwork
-lives in `assets/beside.svg`; run `node generate-icons.mjs` to regenerate Chrome’s
-16/32/48/128 px PNGs (requires Playwright Chromium). `npm run build` copies the
-icon assets into `dist/assets`.
-
-Unattended execution while the panel is closed and recovery of an action
-interrupted by closing the browser are not promised. Edge has not been tested.
-Code Mode / QuickJS WASM is bundled locally; no remote sandbox is used.
-
-## License and early-release limits
-
-Original code and Beside artwork are [MIT licensed](LICENSE). Keep bundled
-dependency notices when distributing `dist/`; see
-[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). The npm `private` flag prevents
-accidental npm publication; it does not change the source license.
-
-This is an early release. Model profile capabilities/token limits remain fixed,
-Edge is unverified, native UI tests require interactive Windows, and unattended
-execution is not promised. Search providers can reject requests or rate-limit.
-Repository CI results should be reviewed before a release; local fixture passes
-are not evidence that a hosted workflow has run.
-
-Page excerpts, tool results and history may contain sensitive information.
-Read [PRIVACY.md](PRIVACY.md), and do not commit credentials or live artifacts.
-Changing repository visibility or rewriting published history requires a
-separate maintainer decision; historical machine-specific notes are not removed
-by updating the current source.
+Original source and Beside artwork are [MIT licensed](LICENSE). Bundled dependencies
+retain their own licenses; read [Third-party notices](THIRD_PARTY_NOTICES.md)
+before distributing a prebuilt extension. The `private` npm flag prevents accidental
+npm publication and does not restrict the source license.
