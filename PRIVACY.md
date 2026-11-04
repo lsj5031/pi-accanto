@@ -14,7 +14,7 @@ to those services.
 | Send a page-chat message | Your configured API server | Your question, relevant task history, the attached page's title/URL and a fresh bounded HTML excerpt. |
 | Read/search a page or PDF | Your configured API server, when tool results enter the conversation | Extracted text, page references, URLs and requested field values. Tools exclude password inputs; explicit HTML inspection can include ordinary input/textarea values. |
 | Search the web | Exa by default, or your selected TinyFish/Brave service | The model's deliberate search query and the selected provider's key if applicable. The whole page is not automatically sent to the search service; review requests carefully because the model can include facts from the conversation in a query. |
-| Allow and read a search result | The approved source website, then your model as a tool result | A direct request to the exact approved URL. Source reads omit cookies and reject redirects. Your IP and normal request metadata remain visible to the website. |
+| Read a search result | The source website, then your model as a tool result | A direct request to an exact URL returned by search in the current task. Existing Chrome website permissions, including all-site access, allow reads without additional per-result approval. Missing host access requires a user-granted Chrome permission. Source reads omit cookies and reject redirects. Your IP and normal request metadata remain visible to the website. |
 | Read an online PDF | The document's server, then your model as extracted text | A direct PDF request that can use your browser's authentication/cookies. Local PDF extraction uses bundled PDF.js; extracted text can still be sent to your model. |
 | Open search in browser | Your browser and DuckDuckGo | The query in a new search tab's URL. That tab is not automatically attached to the conversation. |
 
@@ -38,8 +38,8 @@ answers reliable or page content trustworthy.
   Changing model endpoints or API formats requires an explicitly scoped credential. Never paste
   a key into chat: that would become conversation content.
 - Page attachments, browser-session identifiers and selected search settings are
-  session state. Exact-source approvals and active sandbox state are task-scoped;
-  broader Chrome host grants can persist until revoked.
+  session state. Search-result eligibility and active sandbox state are task-scoped;
+  Chrome host grants can persist until revoked and are reused for source reads.
 - Chrome permissions, browser history, downloads and clipboard contents are
   managed by the browser/OS. Copying an answer puts it on the system clipboard.
 

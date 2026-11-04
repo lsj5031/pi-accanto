@@ -48,7 +48,7 @@ try {
   await browser.route('https://mcp.exa.ai/**', async route => {
     const query = route.request().postDataJSON().params.arguments.query;
     if (query.startsWith('hold-')) await new Promise(done => pending.set(query, done));
-    await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ jsonrpc: '2.0', id: 1, result: { content: [{ type: 'text', text: `Title: Shared source\nURL: ${origin}/source\nText: Public evidence excerpt.` }] } }) }).catch(() => {});
+    await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ jsonrpc: '2.0', id: 1, result: { content: [{ type: 'text', text: `Title: Shared source\nURL: ${origin}/${query === 'source evidence' ? 'fresh-source' : 'source'}\nText: Public evidence excerpt.` }] } }) }).catch(() => {});
   });
   const fixtureA = await browser.newPage();
   const fixtureB = await browser.newPage();
@@ -114,12 +114,11 @@ try {
   await idle(duplicate);
   assert.match(await send(duplicate, 'Code: text(load("marker") ?? "EMPTY-A");'), /EMPTY-A/);
   assert.match(await send(b, 'Code: text(load("marker"));'), /ONLY-B/);
-  await Promise.all([send(duplicate, 'Search: source evidence'), send(b, 'Search: source evidence')]);
-  await duplicate.locator('#sources').evaluate(element => { element.open = true; });
-  await duplicate.locator('#source-list button').click();
-  await duplicate.waitForFunction(() => document.querySelector('#source-list button').disabled);
-  assert.match(await send(b, `Read source: ${origin}/source`), /Source not allowed/);
-  assert.match(await send(duplicate, `Read source: ${origin}/source`), /713/);
+  await send(duplicate, 'Search: source evidence');
+  assert.match(await send(b, `Read source: ${origin}/fresh-source`), /not in this task’s search results/);
+  await send(b, 'Search: source evidence');
+  assert.match(await send(b, `Read source: ${origin}/fresh-source`), /713/);
+  assert.match(await send(duplicate, `Read source: ${origin}/fresh-source`), /713/);
   await duplicate.locator('#history-menu > summary').click();
   assert.equal(await duplicate.locator(`#conversation button[value="${idA}"]`).getAttribute('aria-current'), 'true');
   await duplicate.locator(`#conversation button[value="${idB}"]`).click();
@@ -146,8 +145,8 @@ try {
   assert.equal(await duplicate.evaluate(() => document.documentElement.scrollWidth > innerWidth || document.documentElement.scrollHeight > innerHeight), false);
   await agentTab.screenshot({ path: resolve(artifacts, 'agent-b-restored.png') });
   assert.deepEqual(errors, []);
-  await writeFile(resolve(artifacts, 'report.json'), JSON.stringify({ idA, idB, concurrentWorkers: true, stopIsolation: true, handoffIsolation: true, sandboxIsolation: true, approvalIsolation: true, savedConversationPicker: true, openInTab: true, reload: true }, null, 2));
-  console.log('PASS: per-tab conversations, overlapping Code Mode workers, Stop/handoff isolation, separate memory and approvals, picker, Open in tab and reload.');
+  await writeFile(resolve(artifacts, 'report.json'), JSON.stringify({ idA, idB, concurrentWorkers: true, stopIsolation: true, handoffIsolation: true, sandboxIsolation: true, searchResultIsolation: true, savedConversationPicker: true, openInTab: true, reload: true }, null, 2));
+  console.log('PASS: per-tab conversations, overlapping Code Mode workers, Stop/handoff isolation, separate memory and search results, picker, Open in tab and reload.');
 } finally {
   for (const done of pending.values()) done();
   await browser?.close();

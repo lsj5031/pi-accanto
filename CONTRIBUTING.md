@@ -41,7 +41,7 @@ must be compatible with the adapter described in the README.
 
 The research live suite uses a test-only Node relay for model requests from its
 disposable extension ID. Production runtime has no relay. It also attempts
-keyless Exa search, approved MDN reading and invalid-key TinyFish/Brave requests.
+keyless Exa search, MDN reading with Chrome host access and invalid-key TinyFish/Brave requests.
 Exa quota, external network availability and model output make it unsuitable as
 a deterministic CI gate. Authenticated TinyFish/Brave service success is not
 established by their synthetic fixture responses.
@@ -56,12 +56,12 @@ do not silently pass or skip assertions.
 
 ## Boundaries to preserve
 
-- Keep context, attachments, source approvals and sandbox stores isolated by task
+- Keep context, attachments, search-result eligibility and sandbox stores isolated by task
   and conversation. Never silently read unrelated tabs.
 - Treat page/source text as untrusted. Preserve password exclusions, bounded
   extraction, cancellation and honest partial failures.
-- Keep model/search keys out of persistent storage and artifacts. Broader page
-  permissions must not remove exact-source approvals.
+- Keep model/search keys out of persistent storage and artifacts. Source reads
+  reuse Chrome host grants, but remain limited to exact search results in the task.
 - The public companion iframe must authenticate its exact document through the
   isolated host before loading agent code or storage. Page messages must never
   become a tool/credential bridge. Credentials are entered in extension tabs.

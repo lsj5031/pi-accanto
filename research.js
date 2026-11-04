@@ -120,16 +120,21 @@ export function createResearchTools({ inTarget, sources, showSources, showSearch
           throw new Error(`${error.message} Choose Open search in browser in Accanto. No provider was switched and no full sources were read.`);
         }
         context.abortSignal.throwIfAborted();
-        for (const item of results) if (!sources.has(item.url) && sources.size < 30) sources.set(item.url, { ...item, approved: false });
+        for (const item of results) if (!sources.has(item.url) && sources.size < 30) sources.set(item.url, { ...item });
         showSources();
-        return textResult({ provider, query, results, evidence: 'Search snippets only. Full source text has not been read. User must allow a source in Accanto before read_web_source can fetch it. Up to 30 source approvals per task; start a new task for more. Empty results mean no matches returned.' });
+        return textResult({ provider, query, results, evidence: 'Search snippets only. Full source text has not been read. Use read_web_source to read an exact result when Chrome website access is available. Up to 30 sources per task; start a new task for more. Empty results mean no matches returned.' });
       },
     }),
-    defineTool({ name: 'read_web_source', description: 'Fetch an exact search-result URL explicitly allowed by the user in this task. Does not attach or navigate a tab. Reads bounded public HTML/text without cookies. Redirects and PDFs are unavailable; do not treat failures as evidence.', parameters: Type.Object({ url: Type.String({ maxLength: 4000 }) }),
+    defineTool({ name: 'read_web_source', description: 'Fetch an exact search-result URL from this task using existing Chrome website access. Only ask the user for website access when Chrome permission is missing. Does not attach or navigate a tab. Reads bounded public HTML/text without cookies. Redirects and PDFs are unavailable; do not treat failures as evidence.', parameters: Type.Object({ url: Type.String({ maxLength: 4000 }) }),
       execute: async ({ url }, api, context) => {
-        if (!sources.get(url)?.approved) throw new Error('Source not allowed in this task. Ask the user to choose Allow source beside this exact search result, then retry.');
+        const source = sources.get(url);
+        if (!source) throw new Error('This URL is not in this task’s search results. Search for it before reading.');
         const origin = new URL(url).origin;
-        if (!await chrome.permissions.contains({ origins: [`${origin}/*`] })) throw new Error('Source host permission was revoked. Allow the source again.');
+        source.access = await chrome.permissions.contains({ origins: [`${origin}/*`] });
+        if (!source.access) {
+          showSources();
+          throw new Error('Website access is needed to read this source. Ask the user to choose Allow website beside this action, then retry.');
+        }
         const response = await fetch(url, { credentials: 'omit', referrerPolicy: 'no-referrer', redirect: 'error', signal: AbortSignal.any([context.abortSignal, AbortSignal.timeout(20000)]) });
         if (!response.ok) throw new Error(`Source returned HTTP ${response.status}. Source content was not read.`);
         const mime = response.headers.get('content-type') ?? '';

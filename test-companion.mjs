@@ -477,12 +477,11 @@ try {
   await b.locator('#sources > summary').click();
   assert.equal(await b.evaluate(() => {
     const panel = document.getElementById('sources').getBoundingClientRect();
-    const button = document.querySelector('#source-list button').getBoundingClientRect();
-    return button.top >= panel.top && button.bottom <= panel.bottom;
-  }), true, 'The first source approval must be visible without scrolling');
+    const source = document.querySelector('#source-list a').getBoundingClientRect();
+    return source.top >= panel.top && source.bottom <= panel.bottom;
+  }), true, 'The first source must be visible without scrolling');
   await other.screenshot({ path: resolve(artifacts, 'sources.png') });
-  await b.locator('#source-list button').first().click();
-  await b.waitForFunction(() => document.querySelector('#source-list button').disabled);
+  assert.equal(await b.locator('#source-list button').count(), 0, 'A website with Chrome access must not ask for source approval');
   await b.locator('#sources > summary').click();
   await page.bringToFront();
   await a.locator('#minimize').click();

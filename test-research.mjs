@@ -35,8 +35,9 @@ let browser, panel;
 const report = { provider: live ? 'Live provider outcomes and synthetic protocol fixtures are recorded separately.' : 'Fixture-only checks: no external providers, model credentials or personal config files.', checks: [], modelRequests: [], modelResponses: [] };
 const unexpectedRequests = [];
 try {
-  browser = await chromium.launchPersistentContext(profile, { ...browserOptions, args: [`--disable-extensions-except=${extension}`, `--load-extension=${extension}`], viewport: { width: 380, height: 850 }, deviceScaleFactor: 2 });
+  browser = await chromium.launchPersistentContext(profile, { ...browserOptions, args: [`--disable-extensions-except=${extension}`, `--load-extension=${extension}`, '--apps-gallery-install-auto-confirm-for-tests=accept'], viewport: { width: 380, height: 850 }, deviceScaleFactor: 2 });
   if (!live) await browser.route(/^https?:\/\/(?!127\.0\.0\.1(?=[:/]))/, route => {
+    if (new URL(route.request().url()).hostname === 'localhost') return route.continue();
     unexpectedRequests.push(new URL(route.request().url()).origin);
     return route.abort('blockedbyclient');
   });
@@ -121,10 +122,6 @@ try {
   const mdn = liveSearch.results.find((item) => item.url === 'https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Array/map');
   assert.ok(mdn, 'Exa live response or explicitly synthetic protocol fixture must parse the MDN map reference URL');
   assert.match(mdn.snippet, /map|callback/i);
-  assert.match(await send(`Read source: ${mdn.url}`), /Source not allowed/);
-  await panel.locator('#sources').evaluate((element) => { element.open = true; });
-  await panel.locator('#source-list .source-card').filter({ has: panel.locator(`a[href="${mdn.url}"]`) }).locator('button').evaluate((element) => element.click());
-  await panel.waitForFunction((url) => [...document.querySelectorAll('#source-list .source-card')].some((card) => card.querySelector('a').href === url && card.querySelector('button').disabled), mdn.url);
   report.liveMdnRead = await send(`Read source: ${mdn.url}`);
   assert.match(report.liveMdnRead, /Fetched public source text/);
   assert.match(report.liveMdnRead, /Array\.prototype\.map|map\(\)/);
@@ -262,6 +259,7 @@ try {
       { title: 'Fee evidence', url: `${origin}/source`, description: 'Snippet only, not full text.', page_age: '2026-10-30' },
       { title: 'Unavailable source', url: `${origin}/broken`, description: 'May fail.' },
       { title: 'Slow source', url: `${origin}/slow`, description: 'Cancellation fixture.' },
+      { title: 'Another website', url: `http://localhost:${server.address().port}/source`, description: 'Requires a separate Chrome website grant.' },
     ] } }) });
   });
   assert.match(await send('Search: empty'), /"results":\[\]/);
@@ -271,17 +269,63 @@ try {
   assert.match(await send('Search: deliberate public query'), /Search snippets only/);
   assert.equal(queries.at(-1), 'deliberate public query');
   assert.equal(sourceReads, 0);
-  assert.match(await send(`Read source: ${origin}/source`), /Source not allowed/);
-  assert.equal(sourceReads, 0);
-  await panel.locator('#sources').evaluate((element) => { element.open = true; });
-  for (const button of await panel.locator('#source-list button').all()) await button.evaluate((element) => element.click());
-  await panel.waitForFunction(() => [...document.querySelectorAll('#source-list button')].every((button) => button.disabled));
-  await panel.screenshot({ path: resolve(artifacts, 'sources.png') });
+  assert.match(await send(`Read source: ${origin}/not-a-search-result`), /not in this task’s search results/);
+  assert.equal(await panel.locator('article.toolResult').last().locator('.source-access').count(), 0, 'An arbitrary URL must not offer website access');
   const read = await send(`Read source: ${origin}/source`);
   assert.match(read, /Clause 19/);
   assert.match(read, /Fetched public source text/);
   assert.doesNotMatch(read, /never-read|private-field-value/);
+  assert.equal(sourceReads, 1, 'Existing Chrome access must allow reading without per-result approval');
+  assert.equal(await panel.locator('article.toolResult').last().locator('.source-access').count(), 0);
+  await panel.locator('.turn-activity').last().evaluate(element => { element.open = true; });
+  await panel.locator('article.toolResult').last().scrollIntoViewIfNeeded();
+  await panel.screenshot({ path: resolve(artifacts, 'source-read.png') });
+  const missingOrigin = `http://localhost:${server.address().port}`;
+  assert.match(await send(`Code: await tools.read_web_source({url:${JSON.stringify(`${missingOrigin}/source`)}});`), /Website access is needed/);
+  assert.equal(await panel.locator('article.toolResult').last().locator('.source-access a').getAttribute('href'), `${missingOrigin}/source`, 'Code Mode must identify the exact source needing website access');
+  assert.match(await send(`Read source: ${missingOrigin}/source`), /Website access is needed/);
+  assert.equal(sourceReads, 1, 'Missing Chrome permission must block the fetch');
+  const blockedRead = panel.locator('article.toolResult').last();
+  assert.equal(await blockedRead.locator('.source-access').isVisible(), true, 'Website access must be available beside the blocked read without expanding technical details');
+  assert.equal(await blockedRead.locator('.tool-state').textContent(), 'Access needed');
+  assert.equal(await blockedRead.locator('.source-access a').getAttribute('href'), `${missingOrigin}/source`);
+  assert.equal(await panel.locator('#sources').evaluate(element => element.open), false, 'Inline approval must not require opening Web sources');
+  await blockedRead.locator('.source-access').scrollIntoViewIfNeeded();
+  await panel.screenshot({ path: resolve(artifacts, 'source-access.png') });
+  await panel.setViewportSize({ width: 320, height: 640 });
+  await blockedRead.locator('.source-access').scrollIntoViewIfNeeded();
+  assert.equal(await panel.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, 'Inline approval must fit narrow layouts');
+  await panel.screenshot({ path: resolve(artifacts, 'source-access-narrow.png') });
+  await panel.setViewportSize({ width: 380, height: 850 });
+  // Exercise denial once, then preapprove the host through Chrome's settings
+  // and exercise the real optional-permission request from the retry click.
+  await panel.evaluate(() => {
+    let decline = true;
+    const request = chrome.permissions.request.bind(chrome.permissions);
+    chrome.permissions.request = options => { if (decline) { decline = false; return Promise.resolve(false); } return request(options); };
+  });
+  await blockedRead.getByRole('button', { name: 'Allow website', exact: true }).click();
+  await blockedRead.getByRole('button', { name: /Access failed: Host access was declined/ }).waitFor();
   assert.equal(sourceReads, 1);
+  const permissions = await browser.newPage();
+  try {
+    await permissions.goto('chrome://extensions/');
+    await permissions.evaluate(({ id, host }) => chrome.developerPrivate.addHostPermission(id, host), { id: new URL(worker.url()).host, host: 'http://localhost/*' });
+  } finally { await permissions.close(); }
+  await panel.bringToFront();
+  await blockedRead.getByRole('button', { name: /Try again/ }).click();
+  await panel.bringToFront();
+  await blockedRead.getByRole('button', { name: 'Website access allowed' }).waitFor();
+  assert.equal(await worker.evaluate(host => chrome.permissions.contains({ origins: [host] }), `${missingOrigin}/*`), true, 'Chrome must record the optional website grant');
+  assert.equal(await blockedRead.locator('.tool-state').textContent(), 'Access allowed');
+  assert.match(await blockedRead.locator('.source-access').textContent(), /Send a follow-up to retry/);
+  assert.equal(sourceReads, 1, 'Granting access must not silently retry a read');
+  await panel.screenshot({ path: resolve(artifacts, 'website-access-granted.png') });
+  await panel.locator('#sources').evaluate((element) => { element.open = true; });
+  await panel.waitForFunction(() => !document.querySelector('#source-list button'));
+  await panel.screenshot({ path: resolve(artifacts, 'sources.png') });
+  assert.match(await send(`Read source: ${missingOrigin}/source`), /Fetched public source text/);
+  assert.equal(sourceReads, 2);
   const partial = await send(`Code: const results = await Promise.allSettled([tools.read_web_source({url:${JSON.stringify(`${origin}/source`)}}), tools.read_web_source({url:${JSON.stringify(`${origin}/broken`)}})]); text(results.map(r => r.status === 'fulfilled' ? {status:r.status, url:JSON.parse(r.value).url} : {status:r.status, error:String(r.reason)}));`);
   assert.match(partial, /fulfilled/);
   assert.match(partial, /rejected/);
@@ -308,13 +352,29 @@ try {
   await nextPanel.locator('#continue-here').click();
   await nextPanel.waitForFunction(() => document.getElementById('status').textContent.includes('Ready'));
   assert.equal(await panel.locator('#send').isDisabled(), true, 'The old owner cannot submit after its pending read is stopped');
-  assert.equal(await nextPanel.locator('#sources').isVisible(), false, 'Handoff does not restore source approvals');
+  assert.equal(await nextPanel.locator('#sources').isVisible(), false, 'Handoff requires fresh search evidence');
   await nextPanel.close();
   await panel.locator('#continue-here').evaluate((element) => element.click());
   await panel.waitForFunction(() => document.getElementById('status').textContent.includes('Ready'));
   assert.equal(await panel.locator('#sources').isVisible(), false);
-  assert.match(await send(`Read source: ${origin}/source`), /Source not allowed/);
-  report.checks.push('Web-only context; missing key; fixture search normalization, empty results and 429; per-URL approval; bounded source extraction; multi-call partial failure; Stop pending read and recovery; approvals reset on reload');
+  assert.match(await send(`Read source: ${origin}/source`), /not in this task’s search results/);
+  assert.match(await send('Search: deliberate public query'), /Search snippets only/);
+  assert.match(await send(`Read source: ${missingOrigin}/source`), /Fetched public source text/);
+  const readsBeforeRevocation = sourceReads;
+  await worker.evaluate(() => chrome.permissions.remove({ origins: ['http://localhost/*'] }));
+  assert.match(await send(`Read source: ${missingOrigin}/source`), /Website access is needed/);
+  assert.equal(sourceReads, readsBeforeRevocation, 'Revoking Chrome access must block further reads');
+  const allSites = await browser.newPage();
+  try {
+    await allSites.goto('chrome://extensions/');
+    await allSites.evaluate(async id => {
+      for (const host of ['http://*/*', 'https://*/*']) await chrome.developerPrivate.addHostPermission(id, host);
+    }, new URL(worker.url()).host);
+  } finally { await allSites.close(); }
+  assert.equal(await panel.evaluate(() => chrome.permissions.request({ origins: ['http://*/*', 'https://*/*'] })), true);
+  assert.match(await send(`Read source: ${missingOrigin}/source`), /Fetched public source text/);
+  assert.equal(sourceReads, readsBeforeRevocation + 1, 'All-website access must cover source reads without per-result approval');
+  report.checks.push('Existing, persistent and all-website Chrome access; revocation; missing-host inline action; permission denial/retry; exact search-result isolation; bounded source extraction; partial failure; Stop/recovery; fresh search after handoff');
   if (live) {
   // Real model chooses tools and writes its own script. This checks the local
   // model integration without claiming a live Brave search succeeded.
@@ -409,11 +469,7 @@ try {
   assert.doesNotMatch(webInput, /Attached page context captured|Line items:|31\.40/, 'Web research must not include the previously attached page');
   assert.ok(exaQueries.length > queriesBeforeWebTask, 'Real model must invoke the search tool in this task');
   assert.equal(await panel.locator('#source-list .source-card').count(), 3);
-  await panel.locator('#sources').evaluate((element) => { element.open = true; });
-  await panel.locator('#source-list button').first().evaluate((element) => element.click());
-  await panel.waitForFunction(() => document.querySelector('#source-list button').disabled);
-  await panel.locator('#sources').evaluate((element) => { element.open = false; });
-  const sourcedAnswer = await askModel(`I allowed the Fee evidence source. Use read_web_source to read ${origin}/source and tell me the actual clause and amount. Cite its URL. Do not search again.`);
+  const sourcedAnswer = await askModel(`Use read_web_source to read ${origin}/source and tell me the actual clause and amount. Cite its URL. Do not search again.`);
   assert.match(sourcedAnswer, /47\.20/);
   assert.ok(sourcedAnswer.includes(`${origin}/source`));
   report.liveWebFixture = sourcedAnswer;

@@ -168,10 +168,15 @@ Shared limits sometimes make it unavailable. For your own search account, open
 Search keys are session-only too. **Forget key** removes the selected key and
 returns search to Exa. Accanto doesn't silently switch providers when a search fails.
 
-Search results start with snippets. To let Accanto read a whole source, expand
-**Web sources**, choose **Allow source** for that result, then ask it to read it.
-Approval is for that exact result in that task, and resets when you change tasks
-or reopen the conversation surface.
+Search results start with snippets. Accanto can read the full text of exact
+results returned in the current task using your existing Chrome website access.
+There is no separate per-result approval. **Allow all websites** also covers
+source reading.
+
+If Chrome access is missing, click **Allow website** beside the blocked action
+or in **Web sources**. Accept Chrome's permission prompt, then send a follow-up
+to retry the read. Chrome remembers the website grant until you revoke it;
+granting access alone doesn't fetch a page or send another model request.
 
 If a provider is blocked or rate-limited, **Open search in browser** opens the query
 in a normal tab. To discuss a result, open its page and start a chat there; opening

@@ -103,7 +103,7 @@ select { appearance: none; height: auto; padding-right: 34px; background-image: 
 .source-card > a { display: block; font-weight: 600; font-size: 13px; }
 .source-card > p { font-size: 11px; }
 .source-card > p:last-child { max-height: 56px; overflow-y: auto; }
-.source-card button { padding: 6px 9px; min-height: 32px; margin: 4px 0; color: var(--accent); background: #edf3e4; border-color: #d7e2ca; font-size: 12px; }
+.source-card button { padding: 6px 9px; min-height: 32px; height: auto; max-width: 100%; white-space: normal; margin: 4px 0; color: var(--accent); background: #edf3e4; border-color: #d7e2ca; font-size: 12px; }
 #search-fallback { max-height: 24dvh; min-height: 64px; flex-shrink: 1; overflow-y: auto; border-left: 2px solid #b3c69d; padding: 3px 12px; }
 .tab-switch { margin: 0 18px 8px; padding: 12px; background: #eef3e6; border: 1px solid var(--line); border-radius: 10px; flex-shrink: 0; font-size: 12px; }
 .tab-switch button { margin-top: 8px; padding: 6px 10px; }
@@ -159,6 +159,14 @@ article.activity { margin-bottom: 6px; padding: 0 10px; border: 1px solid var(--
 [data-state=stopped] > details > summary > .tool-state { color: var(--muted); background: #edf0e8; }
 [data-state=error] > .tool-state::before, [data-state=error] > details > summary > .tool-state::before { content: '!'; }
 [data-state=error] > .tool-state, [data-state=error] > details > summary > .tool-state { color: #a24e32; background: #f8e9e2; }
+[data-state=access] > details > summary > .tool-state { color: #805c22; background: #f6eddb; }
+[data-state=access] > details > summary > .tool-state::before { content: '◷'; }
+.source-access { padding: 12px 0; border-top: 1px solid var(--line); overflow-wrap: anywhere; }
+.source-access > a { color: var(--accent); font-size: 13px; font-weight: 600; text-decoration: underline; text-underline-offset: 3px; }
+.source-access p { color: var(--muted); font-size: 12px; margin-top: 6px; }
+.source-access .source-address { font-size: 11px; max-height: 52px; overflow-y: auto; }
+.source-access button { margin-top: 10px; padding: 6px 10px; max-width: 100%; height: auto; white-space: normal; }
+.source-access button:disabled { opacity: 1; color: var(--secondary-foreground); background: var(--secondary); }
 .turn-activity[data-error] > summary { color: #a24e32; }
 .tool-preview { grid-column: 1 / -1; color: var(--muted); font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .tool-section-label { margin-top: 10px; font-size: 10px; font-weight: 600; color: var(--muted); }
