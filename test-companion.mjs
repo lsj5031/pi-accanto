@@ -500,7 +500,9 @@ try {
     await openCompanion(tab);
   }, page.url());
   await page.waitForFunction(() => document.querySelector('[data-accanto-companion]')?.getBoundingClientRect().width > 300);
-  a = page.frames().find(frame => frame.url().includes('/companion.html'));
+  // The host expands before the restored iframe finishes navigating.
+  a = page.frames().find(frame => frame.url().includes('/companion.html'))
+    || await page.waitForEvent('framenavigated', { predicate: frame => frame.url().includes('/companion.html') });
   await ready(a);
   assert.match(await a.locator('#transcript').textContent(), /ONLY-A/);
   await page.screenshot({ path: resolve(artifacts, 'toolbar-companion.png') });
