@@ -189,7 +189,7 @@ body[data-settings=true] { overflow-y: auto; height: auto; min-height: 100dvh; }
 body[data-settings=true] > :not(.product-header) { display: none; }
 body[data-settings=true] .header-actions > :not(#connection) { display: none; }
 body[data-settings=true] #connection > summary { display: none; }
-body[data-settings=true] #settings-drawer { position: static; box-shadow: none; border: 0; border-radius: 0; width: 100%; max-height: none; padding: 32px 0; }
+body[data-settings=true] #settings-drawer { position: static; box-shadow: none; border: 0; border-radius: 0; width: 100%; max-height: none; overflow: visible; padding: 32px 0; }
 body[data-settings=true] .product-header { display: block; width: min(560px, 100%); margin: 0 auto; padding: 28px; }
 body[data-settings=true] .header-actions, body[data-settings=true] #connection { display: block; }
 @media (hover: hover) and (pointer: fine) {

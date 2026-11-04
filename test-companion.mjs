@@ -143,6 +143,26 @@ try {
     }), true, 'Native selects must show an arrow and fit their text without clipping');
   }
   await settings.screenshot({ path: resolve(artifacts, 'settings-narrow.png') });
+  for (const width of [320, 560, 960]) {
+    await settings.setViewportSize({ width, height: 1000 });
+    for (const id of ['model-api', 'model-endpoint', 'model-id', 'api-key']) {
+      const input = settings.locator(`#${id}`);
+      await input.focus();
+      assert.equal(await input.evaluate(element => {
+        const style = getComputedStyle(element);
+        const ring = parseFloat(style.outlineWidth) + parseFloat(style.outlineOffset);
+        const rect = element.getBoundingClientRect();
+        for (let ancestor = element.parentElement; ancestor; ancestor = ancestor.parentElement) {
+          if (getComputedStyle(ancestor).overflowX === 'visible') continue;
+          const bounds = ancestor.getBoundingClientRect();
+          const left = bounds.left + ancestor.clientLeft;
+          if (rect.left - ring < left || rect.right + ring > left + ancestor.clientWidth) return false;
+        }
+        return ring > 0;
+      }), true, `${id} focus outline must fit without horizontal clipping at ${width}px`);
+    }
+    await settings.screenshot({ path: resolve(artifacts, `settings-focus-${width}.png`) });
+  }
   await settings.setViewportSize({ width: 960, height: 1000 });
   await settings.reload();
   await settings.waitForFunction(() => document.getElementById('connection-status')?.dataset.state === 'disconnected');
