@@ -12,15 +12,18 @@ back into a quiet little companion in the corner. *Accanto* means “beside” i
 
 ## See it in action
 
-![A tour of Accanto: hover, open, ask, inspect the calculation, minimize and browse history](docs/screenshots/companion-tour.gif)
+![A 25-second Accanto demo: meet the companion, ask about a booking, inspect Code Mode, search the web and approve a source](docs/screenshots/companion-tour.gif)
 
-[Watch the walkthrough as a video](docs/media/companion-tour.mp4) for a sharper view.
-The tour shows the real extension: the companion's hover response, a page question,
-the calculation behind the answer, saved chats and moving the window.
+[Watch the 25-second demo with sound](docs/media/companion-tour.mp4) for a sharper view.
+See the companion come to life, answer a question about a booking, calculate its
+total with Code Mode, and search the web with your approval to read a source.
 
-The sample booking is fictional and the replies are scripted for a repeatable demo.
-Page reading and the sandboxed calculation run in the actual extension. These are
-usage demonstrations, not a benchmark of a particular AI model.
+Recorded in the real extension with a live model, real search results and source
+reading. The booking is fictional and waiting times are shortened; this is a
+feature demo, not a speed benchmark. Made with [Brag](https://github.com/latent-spaces/brag).
+
+Video music: [Sascha Ende](https://ende.app), “Happy Beats / Business Moves Vol. 9”
+([CC BY 4.0](https://creativecommons.org/licenses/by/4.0/)); excerpt mixed with fades.
 
 ## What can it help with?
 
