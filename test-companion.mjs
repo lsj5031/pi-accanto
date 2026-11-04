@@ -18,9 +18,21 @@ manifest.host_permissions.push('http://127.0.0.1/*');
 await writeFile(resolve(extension, 'manifest.json'), JSON.stringify(manifest));
 const invoice = await readFile('docs/examples/code-mode-invoice.html', 'utf8');
 const calculation = String.raw`const page = JSON.parse(await tools.inspect_tab({})); const m = page.text.match(/(\d+) at (\d+\.\d{2}); delivery (\d+\.\d{2})/); text(Number(m[1]) * Number(m[2]) + Number(m[3]));`;
+let modelOffline = false;
+let dropModelStream;
+const modelRequests = [];
 const server = createServer((request, response) => {
+  if (request.url.startsWith('/v1/')) modelRequests.push({ method: request.method, path: request.url });
+  if (request.method === 'OPTIONS') { response.writeHead(403); response.end(); return; }
   if (request.url === '/v1/models') { response.setHeader('Content-Type', 'application/json'); response.end(JSON.stringify({ data: [{ id: 'companion-fixture' }] })); return; }
   if (request.url === '/v1/chat/completions') {
+    if (modelOffline === 'partial') {
+      response.setHeader('Content-Type', 'text/event-stream');
+      response.write(`data: ${JSON.stringify({ choices: [{ index: 0, delta: { role: 'assistant', content: 'Checking the invoice…' }, finish_reason: null }] })}\n\n`);
+      dropModelStream = () => response.destroy();
+      return;
+    }
+    if (modelOffline) { request.socket.destroy(); return; }
     let body = '';
     request.on('data', chunk => { body += chunk; });
     request.on('end', () => {
@@ -40,15 +52,32 @@ const server = createServer((request, response) => {
 });
 await new Promise(done => server.listen(0, '127.0.0.1', done));
 const origin = `http://127.0.0.1:${server.address().port}`;
+const modelOrigin = `http://localhost:${server.address().port}`;
 const pending = new Map();
 const errors = [];
 let browser;
+let worker;
+const fitWindow = async page => {
+  // Emulated viewports can extend below the native content surface, where
+  // Chromium routes OOPIF clicks to the iframe element instead of its content.
+  const tab = await worker.evaluate(async url => (await chrome.tabs.query({})).find(tab => tab.url === url), page.url());
+  const viewport = page.viewportSize();
+  const cdp = await browser.newCDPSession(page);
+  try {
+    const { windowId, bounds } = await cdp.send('Browser.getWindowForTarget');
+    await cdp.send('Browser.setWindowBounds', { windowId, bounds: {
+      width: bounds.width + Math.max(0, viewport.width - tab.width),
+      height: bounds.height + Math.max(0, viewport.height - tab.height),
+    } });
+  } finally { await cdp.detach(); }
+};
 const ready = frame => frame.waitForFunction(() => document.getElementById('status')?.textContent.includes('Ready'));
 // requestAnimationFrame pauses in clipped frames, although the agent keeps
 // running. Observe completion with timer polling while it is minimized.
 const idle = frame => frame.waitForFunction(() => !document.getElementById('send').disabled, null, { polling: 100 });
 const open = async page => {
   await page.bringToFront();
+  await fitWindow(page);
   const host = page.locator('[data-accanto-companion]');
   await host.waitFor();
   const box = await host.boundingBox();
@@ -65,13 +94,24 @@ const send = async (frame, prompt) => {
 };
 try {
   browser = await chromium.launchPersistentContext(profile, { ...browserOptions, args: [`--disable-extensions-except=${extension}`, `--load-extension=${extension}`], viewport: { width: 1280, height: 840 } });
-  await browser.route(/^https?:\/\/(?!127\.0\.0\.1(?=[:/]))/, route => route.abort('blockedbyclient'));
-  const worker = browser.serviceWorkers()[0] ?? await browser.waitForEvent('serviceworker');
+  await browser.route(/^https?:\/\/(?!(?:127\.0\.0\.1|localhost)(?=[:/]))/, route => route.abort('blockedbyclient'));
+  worker = browser.serviceWorkers()[0] ?? await browser.waitForEvent('serviceworker');
   const base = `chrome-extension://${new URL(worker.url()).host}`;
+  // Headless Chrome cannot accept its native optional-permission prompt.
+  // Change the real grant through Chrome's extension settings instead.
+  const grantModelAccess = async () => {
+    const permissions = await browser.newPage();
+    try {
+      await permissions.goto('chrome://extensions/');
+      await permissions.evaluate(({ id, host }) => chrome.developerPrivate.addHostPermission(id, host), { id: new URL(base).host, host: `${modelOrigin}/*` });
+    } finally { await permissions.close(); }
+  };
+  await grantModelAccess();
   const page = await browser.newPage();
   page.on('pageerror', error => errors.push(error.message));
   await page.goto(`${origin}/invoice`);
   await page.bringToFront();
+  await fitWindow(page);
   await page.locator('[data-accanto-companion]').waitFor();
   assert.equal(page.frames().length, 1, 'The idle launcher must not load an agent or conversation');
   await page.screenshot({ path: resolve(artifacts, 'collapsed.png') });
@@ -107,7 +147,7 @@ try {
   await settings.reload();
   await settings.waitForFunction(() => document.getElementById('connection-status')?.dataset.state === 'disconnected');
   await settings.screenshot({ path: resolve(artifacts, 'settings-disconnected.png') });
-  await settings.locator('#model-endpoint').fill(`${origin}/v1`);
+  await settings.locator('#model-endpoint').fill(`${modelOrigin}/v1`);
   await settings.locator('#model-id').fill('missing-model');
   await settings.locator('#api-key').fill('companion-fixture-key');
   await settings.locator('#connect').click();
@@ -123,6 +163,7 @@ try {
   assert.match(await settings.locator('#connection-status').textContent(), /Connected to companion-fixture/);
   assert.equal(await settings.locator('#connect').textContent(), 'Reconnect');
   await ready(a);
+  assert.equal(await worker.evaluate(origin => chrome.permissions.contains({ origins: [`${origin}/*`] }), modelOrigin), true);
   await settings.screenshot({ path: resolve(artifacts, 'settings.png') });
   await settings.locator('#model-id').fill('edited-model');
   assert.equal(await settings.locator('#connection-status').getAttribute('data-state'), 'draft');
@@ -135,10 +176,9 @@ try {
   await settings.locator('#research-settings').screenshot({ path: resolve(artifacts, 'search-settings.png') });
   await settings.locator('#search-provider').selectOption('exa');
   await settings.locator('#research-settings > summary').click();
-  // These tabs share a native browser window: restore its physical size too,
-  // otherwise Chromium can route iframe clicks into the outer content host.
   await settings.setViewportSize({ width: 1280, height: 840 });
   await page.bringToFront();
+  await fitWindow(page);
   await page.screenshot({ path: resolve(artifacts, 'ready.png') });
   await a.locator('#context-menu').screenshot({ path: resolve(artifacts, 'context-chip.png') });
   await a.locator('#context-menu > summary').click();
@@ -146,6 +186,83 @@ try {
   await page.screenshot({ path: resolve(artifacts, 'context-open.png') });
   await a.locator('#context-menu > summary').click();
   assert.equal(await a.locator('#context-menu').evaluate(element => element.open), false);
+  await worker.evaluate(origin => chrome.permissions.remove({ origins: [`${origin}/*`] }), modelOrigin);
+  assert.equal(await worker.evaluate(origin => chrome.permissions.contains({ origins: [`${origin}/*`] }), modelOrigin), false);
+  const beforeMissingAccess = modelRequests.length;
+  await send(a, 'What is the invoice total?');
+  await idle(a);
+  await writeFile(resolve(artifacts, 'model-access.json'), JSON.stringify({
+    granted: await worker.evaluate(origin => chrome.permissions.contains({ origins: [`${origin}/*`] }), modelOrigin),
+    requests: modelRequests.slice(beforeMissingAccess),
+    status: await a.locator('#status').textContent(),
+    connection: await a.locator('#connection-status').textContent(),
+  }, null, 2));
+  await page.screenshot({ path: resolve(artifacts, 'model-access-missing.png') });
+  assert.match(await a.locator('#status').textContent(), /Model server access is missing/);
+  assert.equal(modelRequests.length, beforeMissingAccess, 'Missing model permission must be caught before any HTTP request');
+  assert.equal(await a.locator('#prompt').inputValue(), 'What is the invoice total?');
+  await settings.reload();
+  await settings.waitForFunction(() => document.getElementById('connection-status').dataset.state === 'permission');
+  await settings.screenshot({ path: resolve(artifacts, 'settings-model-access-missing.png') });
+  await page.bringToFront();
+  await fitWindow(page);
+  let approveModelAccess = false;
+  await browser.exposeBinding('chooseModelAccess', async (_source, options) => {
+    assert.deepEqual(options, { origins: [`${modelOrigin}/*`] }, 'Recovery may request only the saved model host');
+    if (!approveModelAccess) return false;
+    await grantModelAccess();
+    await page.bringToFront();
+    await fitWindow(page);
+    return true;
+  });
+  // Automate Chrome's chooser decision, then run the real permissions request.
+  // The native permission dialog itself is not tested.
+  await a.evaluate(() => {
+    const request = chrome.permissions.request.bind(chrome.permissions);
+    chrome.permissions.request = async options => await window.chooseModelAccess(options) ? request(options) : false;
+  });
+  await a.locator('#allow-model-access').click();
+  await a.waitForFunction(() => document.getElementById('status').textContent.includes('Model access declined'));
+  assert.equal(await worker.evaluate(origin => chrome.permissions.contains({ origins: [`${origin}/*`] }), modelOrigin), false);
+  assert.equal(modelRequests.length, beforeMissingAccess);
+  await page.screenshot({ path: resolve(artifacts, 'model-access-declined.png') });
+  approveModelAccess = true;
+  await a.locator('#allow-model-access').click();
+  await ready(a);
+  assert.equal(await worker.evaluate(origin => chrome.permissions.contains({ origins: [`${origin}/*`] }), modelOrigin), true);
+  assert.equal(await a.locator('#allow-model-access').isVisible(), false);
+  modelOffline = true;
+  await send(a, 'What is the invoice total?');
+  await idle(a);
+  assert.match(await a.locator('.model-error').last().textContent(), /Could not reach your model/);
+  assert.match(await a.locator('.model-error-help').last().textContent(), /API server.*browser requests/);
+  assert.equal(await a.locator('#prompt').inputValue(), 'What is the invoice total?');
+  assert.match(await a.locator('#status').textContent(), /draft is ready to resend/);
+  await page.screenshot({ path: resolve(artifacts, 'model-offline.png') });
+  await a.locator('.model-error-details > summary').last().click();
+  assert.match(await a.locator('.model-error-details .message-body').last().textContent(), /Connection error/i);
+  await page.screenshot({ path: resolve(artifacts, 'model-offline-details.png') });
+  const [recoverySettings] = await Promise.all([
+    browser.waitForEvent('page'),
+    a.locator('.model-error > button').last().click(),
+  ]);
+  await recoverySettings.waitForFunction(() => document.body.dataset.settings === 'true');
+  await recoverySettings.close();
+  await page.bringToFront();
+  await fitWindow(page);
+  modelOffline = 'partial';
+  await send(a, 'Check the invoice again.');
+  await a.locator('article.assistant').last().getByText('Checking the invoice…', { exact: true }).waitFor();
+  dropModelStream();
+  await idle(a);
+  assert.match(await a.locator('.model-error').last().textContent(), /Checking the invoice…/);
+  const streamError = await a.locator('.model-error-details .message-body').last().textContent();
+  assert.ok(streamError && !streamError.includes('Checking the invoice'), 'A partial reply must not hide the actual stream error');
+  await a.locator('.model-error-details > summary').last().click();
+  await a.locator('.model-error').last().evaluate(element => element.scrollIntoView({ block: 'start', behavior: 'instant' }));
+  await page.screenshot({ path: resolve(artifacts, 'model-stream-interrupted.png') });
+  assert.equal(await a.locator('.model-error-details').last().evaluate(element => element.open), true);
+  modelOffline = false;
   const collapsedHeight = await a.locator('#prompt').evaluate(element => element.clientHeight);
   await a.locator('#prompt').fill('Compare the quantities and delivery charge.\nExplain the total and cite each value.');
   assert.equal(await a.locator('#prompt').evaluate((element, height) => element.clientHeight > height && element.scrollHeight <= element.clientHeight + 1, collapsedHeight), true, 'A multiline draft must grow before scrolling');
@@ -193,17 +310,29 @@ try {
   await page.mouse.move(box.x + box.width / 2, box.y + 6);
   await page.mouse.down(); await page.mouse.move(box.x + box.width / 2 - 130, box.y - 74, { steps: 5 }); await page.mouse.up();
   const moved = await page.locator('[data-accanto-companion]').boundingBox();
-  assert.ok(moved.x < box.x - 100 && moved.y < box.y - 50);
+  assert.equal(moved.x, box.x - 130);
+  assert.equal(moved.y, box.y - 80);
   await page.keyboard.press('ArrowLeft');
   assert.ok((await page.locator('[data-accanto-companion]').boundingBox()).x < moved.x);
   box = await page.locator('[data-accanto-companion]').boundingBox();
   await page.mouse.move(box.x + box.width - 3, box.y + box.height - 3);
   await page.mouse.down(); await page.mouse.move(box.x + box.width + 47, box.y + box.height + 37, { steps: 5 }); await page.mouse.up();
   const resized = await page.locator('[data-accanto-companion]').boundingBox();
-  assert.ok(resized.width > box.width + 30 && resized.height > box.height + 20, 'The native resize grip must enlarge the companion');
+  assert.equal(resized.x, box.x, 'Resizing must keep the left edge fixed');
+  assert.equal(resized.y, box.y, 'Resizing must keep the top edge fixed');
+  assert.equal(resized.width, box.width + 50);
+  assert.equal(resized.height, box.height + 40);
+  await page.keyboard.press('ArrowLeft');
+  await page.keyboard.press('ArrowUp');
+  const keyboardResized = await page.locator('[data-accanto-companion]').boundingBox();
+  assert.deepEqual(keyboardResized, { ...resized, width: resized.width - 16, height: resized.height - 16 });
+  await a.waitForFunction(({ width, height }) => innerWidth === width - 2 && innerHeight === height - 2, keyboardResized);
+  await a.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+  await page.screenshot({ path: resolve(artifacts, 'resized.png') });
   await a.locator('#minimize').click();
   await page.screenshot({ path: resolve(artifacts, 'moved-collapsed.png') });
   a = await open(page);
+  assert.deepEqual(await page.locator('[data-accanto-companion]').boundingBox(), keyboardResized, 'Reopening must preserve position and size');
   assert.match(await a.locator('#transcript').textContent(), /90\.75/);
   await page.setViewportSize({ width: 390, height: 640 });
   await page.screenshot({ path: resolve(artifacts, 'narrow.png') });
@@ -223,6 +352,7 @@ try {
   await page.screenshot({ path: resolve(artifacts, 'composer-narrow.png') });
   await a.locator('#prompt').fill('');
   await page.setViewportSize({ width: 1280, height: 840 });
+  await fitWindow(page);
   await worker.evaluate(() => chrome.storage.local.set({ mode: 'scripted' }));
   await ready(a);
   const other = await browser.newPage();

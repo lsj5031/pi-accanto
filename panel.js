@@ -322,6 +322,32 @@ function render(view) {
         article.append(details);
       } else {
         article.append(role, body);
+        if (message.role === 'assistant' && message.errorMessage && message.stopReason !== 'aborted') {
+          article.classList.add('model-error');
+          const network = /connection error|failed to fetch|network.?error|fetch failed/i.test(message.errorMessage);
+          role.textContent = network ? 'Could not reach your model' : 'Model request failed';
+          const help = document.createElement('p');
+          help.className = 'model-error-help';
+          help.textContent = network
+            ? 'Check your internet or VPN connection and that your API server is running and accepts browser requests. Check the endpoint, API format and website access in model settings, then resend your draft. The browser did not provide a more specific cause.'
+            : 'Check the provider’s error below. You can review your model settings, then resend your draft.';
+          const details = document.createElement('details');
+          details.className = 'model-error-details';
+          details.dataset.message = `error:${entry.id}:${messageIndex}`;
+          details.open = expanded.has(details.dataset.message);
+          const summary = document.createElement('summary');
+          summary.textContent = 'Error details';
+          const errorBody = messageBody(message.errorMessage, false);
+          errorBody.className = 'message-body';
+          details.append(summary, errorBody);
+          if (text === message.errorMessage) body.remove();
+          const settings = document.createElement('button');
+          settings.type = 'button';
+          settings.className = 'btn';
+          settings.textContent = 'Model settings';
+          settings.addEventListener('click', () => $('connect-model').click());
+          article.append(help, details, settings);
+        }
         if (message.role === 'assistant' && !message.errorMessage) {
           const actions = document.createElement('div');
           actions.className = 'message-actions';
@@ -667,6 +693,34 @@ async function start() {
   });
   $('provider-notice').textContent = scripted ? 'Offline check' : modelId || 'Set up model';
   connectionStatus(scripted ? 'offline' : apiKey ? 'connected' : 'disconnected', scripted ? 'Offline check mode.' : apiKey ? `Connected to ${modelId}. Credential available for this browser session.` : 'Not connected. Enter your API key, then Connect.');
+  const modelOrigin = endpoint ? `${new URL(endpoint).origin}/*` : undefined;
+  const missingModelAccess = `Model server access is missing for ${endpoint ? new URL(endpoint).host : 'your endpoint'}. Allow model access to reconnect.`;
+  const refreshModelAccess = async () => {
+    const allowed = scripted || !apiKey || !modelOrigin || await chrome.permissions.contains({ origins: [modelOrigin] });
+    $('allow-model-access').hidden = allowed || settingsOnly;
+    $('allow-model-access').disabled = busy;
+    if (!allowed) {
+      connectionStatus('permission', `${missingModelAccess} You can also use Connect in settings to allow it again.`);
+      if (!busy && !settingsOnly) $('status').textContent = missingModelAccess;
+    } else if ($('connection-status').dataset.state === 'permission') {
+      connectionStatus('connected', `Connected to ${modelId}. Credential available for this browser session.`);
+      if (!busy && !settingsOnly) $('status').textContent = 'Ready · Model access restored. Send your draft again.';
+    }
+    return allowed;
+  };
+  chrome.permissions.onAdded.addListener(() => { void refreshModelAccess(); });
+  chrome.permissions.onRemoved.addListener(() => { void refreshModelAccess(); });
+  $('allow-model-access').addEventListener('click', async () => {
+    if (busy || !ownsConversation || !modelOrigin) return;
+    $('allow-model-access').disabled = true;
+    try {
+      // Request only the saved model host, directly inside the user's gesture.
+      if (!await chrome.permissions.request({ origins: [modelOrigin] })) throw new Error('Model access declined. Your draft is saved; allow access when you are ready.');
+      await refreshModelAccess();
+    } catch (error) { $('status').textContent = error.message; }
+    finally { $('allow-model-access').disabled = false; }
+  });
+  await refreshModelAccess();
   $('onboarding').hidden = scripted || Boolean(apiKey) || settingsOnly;
   $('connection').open = settingsOnly;
   $('send').textContent = scripted ? 'Run check' : 'Send';
@@ -896,6 +950,7 @@ async function start() {
   chrome.windows.onFocusChanged.addListener(() => { void showAttachment(); });
   $('status').textContent = scripted ? 'Ready · Offline check, no AI inference' : apiKey ? 'Ready · History saved on this device' : 'Connect your model to get started';
   $('send').disabled = !scripted && !apiKey;
+  await refreshModelAccess();
 
   $('allow-site').addEventListener('click', async () => {
     if (!accessTab || busy || !ownsConversation) return;
@@ -984,6 +1039,7 @@ async function start() {
     $('connect').disabled = true;
     $('use-current-tab').disabled = $('new-conversation').disabled = $('web-conversation').disabled = true;
     try {
+      if (!await refreshModelAccess()) throw new Error(missingModelAccess);
       if (!attachment && !webResearch) await attachCurrent(useConversationTab);
       let pageContext;
       try {
@@ -1014,7 +1070,9 @@ async function start() {
       if (!ownsConversation) return;
       const submission = await root.submit({ type: 'input', content, entry: { kind: 'accanto.question', data: { prompt } }, requestId: crypto.randomUUID() }, context);
       const result = await submission.wait(context);
-      $('status').textContent = result.status === 'done' ? `${scripted ? 'Check' : 'Reply'} complete · Saved on this device` : `Run ended: ${result.status}${result.reason ? ` (${result.reason})` : ''}`;
+      $('status').textContent = result.status === 'done' ? `${scripted ? 'Check' : 'Reply'} complete · Saved on this device`
+        : result.reason === 'model_error' ? 'Reply failed · See the error above. Your draft is ready to resend.'
+          : `Run ended: ${result.status}${result.reason ? ` (${result.reason})` : ''}`;
       if (result.status !== 'done' && !$('prompt').value) $('prompt').value = draft;
     } catch (error) {
       if (!$('prompt').value) $('prompt').value = draft;
@@ -1026,6 +1084,7 @@ async function start() {
       $('stop').disabled = true;
       $('connect').disabled = false;
       $('use-current-tab').disabled = $('new-conversation').disabled = $('web-conversation').disabled = !ownsConversation;
+      await refreshModelAccess();
       await showAttachment();
       statusChanged();
       if (reconnectPending) location.reload();

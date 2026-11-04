@@ -53,7 +53,7 @@ svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width:
 #settings #connection-status { padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--secondary); }
 #settings #connection-status[data-state=connected] { color: #365c29; border-color: #bdd2ad; background: #eaf3e3; font-weight: 500; }
 #connection-status[data-state=connected]::before { content: '✓'; margin-right: 6px; }
-#settings #connection-status[data-state=error] { color: #943c29; border-color: #e8c3b7; background: #fcf0e9; }
+#settings #connection-status[data-state=error], #settings #connection-status[data-state=permission] { color: #943c29; border-color: #e8c3b7; background: #fcf0e9; }
 label { display: block; font-size: 12px; color: #586c4c; margin-bottom: 6px; }
 #settings label { margin-top: 14px; }
 :is(#settings, #search-settings) button { margin-top: 12px; }
@@ -155,10 +155,18 @@ article.activity { margin-bottom: 6px; padding: 0 10px; border: 1px solid var(--
 .nested-activity li { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 4px 8px; padding: 3px 0; }
 .nested-activity li > p { flex-basis: 100%; color: #a24e32; overflow-wrap: anywhere; }
 .tool-preparing { color: var(--muted); font-size: 12px; }
+.model-error { padding: 12px; border: 1px solid #ead7cb; border-radius: 10px; background: #fcf6f0; }
+.model-error .message-label { display: block; color: #875037; }
+.model-error-help { margin: 6px 0 10px; font-size: 12px; line-height: 1.6; }
+.model-error-details { margin-bottom: 10px; font-size: 12px; }
+.model-error-details > summary { cursor: pointer; color: var(--muted); }
+.model-error-details .message-body { margin-top: 6px; font-size: 12px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.model-error > button { padding: 5px 10px; font-size: 12px; }
 .task-boundary { padding: 12px 0; margin: 16px 0; border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; }
 footer { flex-shrink: 0; padding: 8px 12px 12px; background: var(--background); }
 #status { color: #78896a; font-size: 11px; margin: 0 6px 6px; overflow-wrap: anywhere; max-height: 70px; overflow-y: auto; }
 #status[data-quiet=true] { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(100%); }
+#allow-model-access { margin: 0 6px 8px; padding: 5px 10px; font-size: 12px; }
 .compose-box { position: relative; padding: 9px 10px 10px; background: #fff; border: 1px solid #d7e1ca; border-radius: 12px; }
 .compose-box:focus-within { border-color: #9bb57c; box-shadow: 0 0 0 2px #e5eddc; }
 #context-menu { position: relative; width: fit-content; max-width: 100%; margin-bottom: 8px; }
