@@ -11,7 +11,7 @@
     "default_title": "Open Pi Accanto",
     "default_icon": { "16": "assets/icon-16.png", "32": "assets/icon-32.png" }
   },
-  "commands": { "_execute_action": { "suggested_key": { "default": "Alt+Shift+P" } } },
+  "commands": { "_execute_action": { "suggested_key": { "default": "Alt+Shift+Q" } } },
   "background": { "service_worker": "background.js" },
   "web_accessible_resources": [{ "resources": ["companion.html"], "matches": ["http://*/*", "https://*/*"] }],
   "content_security_policy": { "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'; worker-src 'self'; connect-src 'self' http: https: file:" }

@@ -532,6 +532,16 @@ async function start() {
   $('open-settings').addEventListener('click', openSettings);
   $('open-settings').hidden = $('minimize').hidden = !embedded;
   $('minimize').addEventListener('click', () => parent.postMessage({ type: 'accanto-minimize' }, '*'));
+  $('send-modifier').textContent = /mac/i.test(navigator.userAgentData?.platform || navigator.platform) ? '⌘' : 'Ctrl';
+  for (const id of ['minimize-shortcut', 'move-shortcut', 'move-shortcut-help']) $(id).hidden = !embedded;
+  $('open-shortcuts').addEventListener('click', async () => {
+    $('keyboard-shortcuts').showModal();
+    const commands = await chrome.commands.getAll();
+    $('open-shortcut').textContent = commands.find(command => command.name === '_execute_action')?.shortcut || 'Not assigned';
+  });
+  $('customize-shortcuts').addEventListener('click', () => {
+    void chrome.tabs.create({ url: 'chrome://extensions/shortcuts' });
+  });
   const statusChanged = () => {
     $('status').dataset.quiet = String(!busy && /^(Ready|Reply complete|Check complete|Attached|New conversation|Web research)/.test($('status').textContent));
     if (embedded) parent.postMessage({ type: 'accanto-busy', busy }, '*');
@@ -734,6 +744,13 @@ async function start() {
     if (!$('context-menu').contains(event.target)) $('context-menu').open = false;
   });
   document.addEventListener('keydown', (event) => {
+    if ($('keyboard-shortcuts').open) {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        $('keyboard-shortcuts').close();
+      }
+      return;
+    }
     if (event.key === 'Escape' && $('connection').open) {
       $('connection').open = false;
       $('connection').querySelector('summary').focus();

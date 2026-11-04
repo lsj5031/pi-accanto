@@ -20,6 +20,7 @@
       </section>
     </details>
     <button type="button" id="open-settings" class="icon-button" aria-label="Settings" title="Settings" hidden><svg viewBox="0 0 20 20"><path d="M4 6h12M4 14h12M7 3v6M13 11v6"/></svg></button>
+    <button type="button" id="open-shortcuts" class="icon-button" aria-label="Keyboard shortcuts" title="Keyboard shortcuts"><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="7"/><path d="M8 7a2 2 0 0 1 4 0c0 2-2 2-2 4M10 14h.01"/></svg></button>
     <details id="connection">
       <summary class="icon-button" aria-label="Settings" title="Settings"><svg viewBox="0 0 20 20"><path d="M4 6h12M4 14h12M7 3v6M13 11v6"/></svg><span id="provider-notice" class="sr-only">Set up model</span></summary>
       <div id="settings-drawer" class="popover">
@@ -142,6 +143,24 @@
     </form>
     <p id="help" class="sr-only">Page content goes to your chosen model. Ctrl or Command + Enter to send.</p>
   </footer>
+  <dialog id="keyboard-shortcuts" aria-labelledby="shortcuts-title">
+    <div class="shortcuts-heading">
+      <h2 id="shortcuts-title">Keyboard shortcuts</h2>
+      <form method="dialog"><button class="icon-button" aria-label="Close keyboard shortcuts" autofocus><svg viewBox="0 0 20 20" aria-hidden="true"><path d="m5 5 10 10M15 5 5 15"/></svg></button></form>
+    </div>
+    <div class="shortcut-content">
+    <dl class="shortcut-list">
+      <div><dt>Open Accanto</dt><dd id="open-shortcut">Not assigned</dd></div>
+      <div><dt>Send message</dt><dd><kbd id="send-modifier">Ctrl</kbd> + <kbd>Enter</kbd></dd></div>
+      <div><dt>Close menu or help</dt><dd><kbd>Esc</kbd></dd></div>
+      <div id="minimize-shortcut"><dt>Minimize companion</dt><dd><kbd>Esc</kbd></dd></div>
+      <div id="move-shortcut"><dt>Move or resize</dt><dd><kbd>↑</kbd> <kbd>↓</kbd> <kbd>←</kbd> <kbd>→</kbd></dd></div>
+    </dl>
+    <p id="move-shortcut-help">Focus the top grip or resize handle to use the arrow keys. Escape minimizes when no menu or help is open.</p>
+    <p>The opening shortcut works while browsing. The others work inside Accanto.</p>
+    </div>
+    <button type="button" id="customize-shortcuts">Customize in Chrome <span aria-hidden="true">↗</span></button>
+  </dialog>
   <script type="module" src="panel.js"></script>
 </body>
 </html>

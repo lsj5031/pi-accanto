@@ -125,12 +125,17 @@ friendly eye change, then click to open. Reduced-motion preferences are respecte
 
 | Want to… | Here's how |
 | --- | --- |
+| Open Accanto from the keyboard | Press **Alt + Shift + Q** (**Option + Shift + Q** on Mac). |
+| See keyboard shortcuts | Click **?** in the header. **Customize in Chrome** lets you change the opening shortcut. |
 | Put it away | Click **−** or press **Escape**. A running reply continues while minimized. |
 | Move or resize it | Drag the small grip at the top, or resize from the bottom-right corner. |
 | Start fresh or return to a chat | Open **History** in the header. Choose **New chat** or a saved conversation. |
 | Ask without reading this page | Open the page-context chip and choose **Web only**. |
 | Keep working while you navigate | Choose **History → Open in a tab** before starting the reply. Keep that assistant tab open. |
 | Hide the companion on a website | Right-click the small companion and choose **Hide on this site**. The toolbar can bring it back. |
+
+Chrome may keep an older shortcut when you update the extension. Check or change
+it at `chrome://extensions/shortcuts`; the help dialog shows your current assignment.
 
 ![The compact history menu, with a current-chat checkmark and a separate Open in a tab action](docs/screenshots/companion-history.png)
 

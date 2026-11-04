@@ -200,6 +200,16 @@ try {
   await page.bringToFront();
   await fitWindow(page);
   await page.screenshot({ path: resolve(artifacts, 'ready.png') });
+  await a.getByRole('button', { name: 'Keyboard shortcuts', exact: true }).click();
+  await a.getByRole('dialog', { name: 'Keyboard shortcuts' }).waitFor();
+  await a.getByRole('button', { name: 'Close keyboard shortcuts' }).waitFor();
+  assert.equal(await a.locator('#move-shortcut').isVisible(), true);
+  await page.screenshot({ path: resolve(artifacts, 'shortcuts.png') });
+  await page.keyboard.press('Escape');
+  assert.equal(await a.locator('#keyboard-shortcuts').isVisible(), false);
+  assert.equal(await a.locator('#open-shortcuts').evaluate(element => element === document.activeElement), true, 'Closing help must return focus to its button');
+  await a.locator('#prompt').fill('Help must close without minimizing the companion');
+  await a.locator('#prompt').fill('');
   await a.locator('#context-menu').screenshot({ path: resolve(artifacts, 'context-chip.png') });
   await a.locator('#context-menu > summary').click();
   assert.equal(await a.locator('#context-menu').evaluate(element => element.open), true, 'The context chip must open its menu');
@@ -360,6 +370,14 @@ try {
   box = await page.locator('[data-accanto-companion]').boundingBox();
   assert.ok(box.x >= 0 && box.x + box.width <= 390 && box.y >= 0 && box.y + box.height <= 640);
   await page.setViewportSize({ width: 320, height: 640 });
+  await a.locator('#open-shortcuts').click();
+  assert.equal(await a.locator('#keyboard-shortcuts').evaluate(element => {
+    const box = element.getBoundingClientRect();
+    const customize = document.getElementById('customize-shortcuts').getBoundingClientRect();
+    return box.left >= 0 && box.right <= innerWidth && box.top >= 0 && box.bottom <= innerHeight && element.scrollWidth <= element.clientWidth && customize.top >= box.top && customize.bottom <= box.bottom;
+  }), true, 'Shortcut help and its customization action must fit a narrow companion');
+  await page.screenshot({ path: resolve(artifacts, 'shortcuts-narrow.png') });
+  await a.getByRole('button', { name: 'Close keyboard shortcuts' }).click();
   await a.locator('#history-menu > summary').click();
   assert.equal(await a.locator('#conversation-bar').evaluate(element => {
     const box = element.getBoundingClientRect();
@@ -477,6 +495,16 @@ try {
   assert.ok(agent.url().startsWith(`${base}/panel.html`));
   assert.equal(new URL(agent.url()).searchParams.get('conversation'), idA);
   assert.match(await agent.locator('#transcript').textContent(), /ONLY-A/);
+  await agent.locator('#open-shortcuts').click();
+  assert.equal(await agent.locator('#move-shortcut').isVisible(), false, 'Standalone help must omit floating-only controls');
+  await agent.screenshot({ path: resolve(artifacts, 'shortcuts-tab.png') });
+  const shortcutSettingsOpened = browser.waitForEvent('page');
+  await agent.locator('#customize-shortcuts').click();
+  const shortcutSettings = await shortcutSettingsOpened;
+  await shortcutSettings.waitForURL('chrome://extensions/shortcuts');
+  await shortcutSettings.close();
+  await agent.bringToFront();
+  await agent.getByRole('button', { name: 'Close keyboard shortcuts' }).click();
   assert.equal(await a.locator('#send').isDisabled(), true, 'Open in a tab must release the floating conversation');
   await page.goto(`${origin}/after-navigation`);
   await send(agent, 'Code: text(load("marker"));'); await idle(agent);

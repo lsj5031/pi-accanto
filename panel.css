@@ -44,6 +44,18 @@ svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width:
 .big-buddy .buddy { transform: scale(1.1); }
 .header-actions { display: flex; gap: 2px; align-items: center; }
 .icon-button { display: grid; place-items: center; min-width: 32px; width: 32px; height: 32px; min-height: 32px; padding: 0; border: 0; border-radius: 7px; background: transparent; color: #73816a; list-style: none; }
+#keyboard-shortcuts { width: min(380px, calc(100% - 24px)); max-height: calc(100dvh - 24px); margin: auto; padding: 20px; overflow-y: auto; color: var(--foreground); background: var(--background); border: 1px solid var(--border); border-radius: 16px; box-shadow: 0 16px 48px #243a1c26; }
+#keyboard-shortcuts[open] { display: flex; flex-direction: column; }
+#keyboard-shortcuts::backdrop { background: #243a1c45; }
+.shortcuts-heading { display: flex; flex-shrink: 0; align-items: center; justify-content: space-between; gap: 8px; }
+.shortcuts-heading h2 { font-size: 16px; font-weight: 600; letter-spacing: -.3px; }
+.shortcut-content { min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; margin: 12px 0; }
+.shortcut-list { margin: 0; }
+.shortcut-list > div { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--line); font-size: 12px; }
+.shortcut-list dd { margin: 0; flex-shrink: 0; white-space: nowrap; }
+.shortcut-list kbd { padding: 2px 5px; border: 1px solid var(--border); border-radius: 4px; background: var(--secondary); font: inherit; }
+#keyboard-shortcuts p { margin: 10px 0; color: var(--muted-foreground); font-size: 12px; }
+#customize-shortcuts { width: 100%; flex-shrink: 0; color: var(--secondary-foreground); background: var(--secondary); }
 .popover { display: block; z-index: 5; border: 1px solid #dae3cf; border-radius: 12px; background: #fcfdf8; box-shadow: 0 8px 28px #243a1c1a; }
 #settings-drawer { position: absolute; right: 12px; top: 56px; width: min(360px, calc(100vw - 24px)); max-height: calc(100dvh - 70px); overflow-y: auto; overscroll-behavior: contain; padding: 20px; }
 .settings-title { font-size: 20px; letter-spacing: -.4px; margin-bottom: 20px; font-weight: 600; }
