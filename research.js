@@ -1,5 +1,6 @@
 import { defineTool } from '@earendil-works/pi-durable';
 import { Type } from 'typebox';
+import { readCredential } from './credentials.js';
 
 const textResult = (value) => ({ output: [{ type: 'text', text: JSON.stringify(value) }] });
 
@@ -82,7 +83,9 @@ export function createResearchTools({ inTarget, sources, showSources, showSearch
     }),
     defineTool({ name: 'web_search', description: 'Search the public web with keyless Exa, or optional TinyFish/Brave when explicitly selected in settings. Send only an intentional public query, never whole page text or private field contents. Returns provider excerpts, not direct full-page reads. On errors use the explicit browser-search fallback; never automatically switch providers or retry rate limits.', parameters: Type.Object({ query: Type.String({ minLength: 1, maxLength: 400 }) }),
       execute: async ({ query }, api, context) => {
-        const { searchProvider = 'exa', tinyfishKey, braveKey, braveStorage } = await chrome.storage.session.get(['searchProvider', 'tinyfishKey', 'braveKey', 'braveStorage']);
+        const { searchProvider = 'exa' } = { ...await chrome.storage.local.get('searchProvider'), ...await chrome.storage.session.get('searchProvider') };
+        const { tinyfishKey } = searchProvider === 'tinyfish' ? await readCredential('tinyfishKey') : {};
+        const { braveKey, braveStorage } = searchProvider === 'brave' ? await readCredential('braveKey') : {};
         let results;
         const provider = searchProvider === 'brave' ? 'Brave Search' : searchProvider === 'tinyfish' ? 'TinyFish' : 'Exa';
         showSearchFallback(null);

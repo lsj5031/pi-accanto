@@ -36,8 +36,10 @@
         <input id="model-id" required spellcheck="false" placeholder="Model listed by /models">
         <label for="api-key">API key</label>
         <input id="api-key" type="password" autocomplete="off" spellcheck="false" aria-describedby="key-help">
-        <p id="key-help">Kept for this browser session only.</p>
+        <label class="checkbox"><input id="remember-model-key" type="checkbox" checked>Remember API key on this device</label>
+        <p id="key-help">Uncheck to keep the key for this browser session only.</p>
         <button id="connect">Connect</button>
+        <button type="button" id="forget-model-key" hidden>Forget key</button>
         <p id="connection-status" role="status">Enter the endpoint’s key to connect.</p>
         <h2 class="access-heading">Website access</h2>
         <p id="all-sites-help">Allow sites individually, or approve access to all HTTP(S) websites once. Only the attached page is read.</p>
@@ -91,19 +93,22 @@
       <div id="tinyfish-settings" hidden>
         <label for="tinyfish-key">TinyFish API key</label>
         <input id="tinyfish-key" type="password" autocomplete="off" spellcheck="false">
-        <p>Uses your TinyFish account quota. Key kept for this browser session only.</p>
+        <p>Uses your TinyFish account quota.</p>
         <p><a href="https://docs.tinyfish.ai/search-api" target="_blank" rel="noopener noreferrer">TinyFish search and plans</a></p>
       </div>
       <div id="brave-settings" hidden>
       <label for="brave-key">Brave Search API key</label>
       <input id="brave-key" type="password" autocomplete="off" spellcheck="false">
-      <p>Key kept for this browser session only.</p>
       <label class="checkbox"><input id="brave-storage" type="checkbox">My Brave plan includes storage rights for results.</label>
       <p><a href="https://brave.com/search/api/" target="_blank" rel="noopener noreferrer">Brave plans and terms</a></p>
       </div>
+      <div id="search-key-storage" hidden>
+        <label class="checkbox"><input id="remember-search-key" type="checkbox" checked>Remember API key on this device</label>
+        <p>Uncheck to keep the key for this browser session only.</p>
+      </div>
       <button id="save-search">Save choice</button>
       <button type="button" id="disable-search" hidden>Forget key</button>
-      <p id="search-status" role="status">Applies to new searches in this browser session.</p>
+      <p id="search-status" role="status">Applies to new searches.</p>
     </form>
   </details>
   <section id="search-fallback" class="research-settings" aria-label="Search unavailable" hidden>

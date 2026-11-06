@@ -111,8 +111,7 @@ try {
   assert.equal(await panel.locator('#model-endpoint').inputValue(), '');
   assert.equal(await panel.locator('#model-id').inputValue(), '');
   assert.equal(await panel.locator('#send').isDisabled(), true);
-  await worker.evaluate(() => chrome.storage.session.set({ apiKey: 'unscoped-fixture-key' }));
-  await panel.reload();
+  await Promise.all([panel.waitForEvent('load'), worker.evaluate(() => chrome.storage.session.set({ apiKey: 'unscoped-fixture-key' }))]);
   await panel.waitForFunction(() => document.getElementById('status')?.textContent.includes('Connect your model'));
   assert.equal(await panel.locator('#send').isDisabled(), true, 'Unscoped legacy credentials cannot select a server');
   await panel.setViewportSize({ width: 420, height: 850 });
@@ -120,8 +119,7 @@ try {
   await panel.setViewportSize({ width: 320, height: 640 });
   await panel.screenshot({ path: resolve(artifacts, 'fresh-install.png') });
   assert.equal(await panel.evaluate(() => document.documentElement.scrollWidth), 320);
-  await worker.evaluate(async () => { await chrome.storage.session.remove('apiKey'); await chrome.storage.local.set({ mode: 'scripted' }); });
-  await panel.reload();
+  await Promise.all([panel.waitForEvent('load'), worker.evaluate(async () => { await chrome.storage.session.remove('apiKey'); await chrome.storage.local.set({ mode: 'scripted' }); })]);
   await panel.setViewportSize({ width: 420, height: 850 });
   await panel.emulateMedia({ colorScheme: 'dark', reducedMotion: 'reduce' });
   await panel.waitForFunction(() => document.getElementById('status')?.textContent.includes('Ready'));
@@ -297,6 +295,8 @@ try {
   await reopened.locator('#model-endpoint').fill(`${modelEndpoint}///`);
   await reopened.locator('#model-id').fill('missing-model');
   await reopened.locator('#api-key').fill('fixture-key-719');
+  assert.equal(await reopened.locator('#remember-model-key').isChecked(), true, 'New connections remember keys by default');
+  await reopened.locator('#remember-model-key').uncheck();
   await reopened.locator('#connect').click();
   await reopened.waitForFunction(() => document.getElementById('connection-status').textContent.includes('does not list model missing-model'));
   assert.equal(await reopened.evaluate(async () => (await chrome.storage.local.get('modelConnection')).modelConnection), undefined);
@@ -333,16 +333,15 @@ try {
   assert.equal(modelRequests.at(-1).body.model, 'fixture-model-719');
   assert.equal(modelRequests.at(-1).authorization, 'Bearer fixture-key-719');
   // Previously saved Chat Completions settings and session keys have no API tag.
-  await reopened.evaluate(async () => {
+  await Promise.all([reopened.waitForEvent('load'), browser.serviceWorkers()[0].evaluate(async () => {
     const { modelConnection } = await chrome.storage.local.get('modelConnection');
     delete modelConnection.api;
     await chrome.storage.local.set({ modelConnection });
     await chrome.storage.session.remove('apiKeyApi');
-  });
-  await reopened.reload();
+  })]);
   await reopened.waitForFunction(() => document.getElementById('status').textContent.includes('Ready'));
   assert.equal(await reopened.locator('#model-api').inputValue(), 'openai-completions');
-  assert.match(await reopened.locator('#connection-status').textContent(), /Credential available/);
+  assert.match(await reopened.locator('#connection-status').textContent(), /Key available for this browser session only/);
   const nativeEndpoint = `http://127.0.0.1:${server.address().port}/native`;
   for (const [api, modelId, keyHeader] of [
     ['openai-responses', 'gpt-4.1-mini', 'authorization'],
@@ -434,6 +433,7 @@ try {
   await reopened.locator('#model-endpoint').fill(modelEndpoint);
   await reopened.locator('#model-id').fill('fixture-model-719');
   await reopened.locator('#api-key').fill('fixture-key-719');
+  await reopened.locator('#remember-model-key').check();
   await reopened.locator('#connect').click();
   await reopened.waitForFunction(() => document.getElementById('provider-notice').textContent === 'fixture-model-719');
   await reopened.reload();
@@ -457,11 +457,55 @@ try {
   });
   const settingsRestored = await browser.newPage();
   await settingsRestored.goto(conversationUrl);
-  await settingsRestored.waitForFunction(() => document.getElementById('status').textContent.includes('Connect your model'));
+  await settingsRestored.waitForFunction(() => document.getElementById('status').textContent.includes('Ready'));
   assert.equal(await settingsRestored.locator('#model-endpoint').inputValue(), modelEndpoint);
   assert.equal(await settingsRestored.locator('#model-id').inputValue(), 'fixture-model-719');
-  assert.equal(await settingsRestored.locator('#send').isDisabled(), true, 'Endpoint/model persist after restart; the session key does not');
-  console.log('PASS: browser controls, clipboard, tab/context boundaries, history, Chat Completions/Responses/Anthropic/Gemini routing, native tool round trips, auth errors, Stop/recovery, credential isolation, settings persistence and session-key expiry');
+  assert.equal(await settingsRestored.locator('#remember-model-key').isChecked(), true);
+  assert.equal(await settingsRestored.locator('#api-key').inputValue(), '');
+  await settingsRestored.locator('#web-conversation').evaluate(button => button.click());
+  await settingsRestored.waitForFunction(() => !document.getElementById('send').disabled);
+  await settingsRestored.locator('#prompt').fill('Check the remembered connection after restarting Chrome.');
+  await settingsRestored.locator('#send').click();
+  await settingsRestored.waitForFunction(() => !document.getElementById('send').disabled);
+  assert.match(await settingsRestored.locator('article.assistant').last().textContent(), /Configured model fixture response 719/);
+  assert.equal(modelRequests.at(-1).authorization, 'Bearer fixture-key-719');
+  await settingsRestored.locator('#connection > summary').click();
+  await settingsRestored.locator('#connect').scrollIntoViewIfNeeded();
+  await settingsRestored.screenshot({ path: resolve(artifacts, 'remembered-model.png') });
+  const beforeIsolation = modelRequests.length;
+  await settingsRestored.locator('#model-endpoint').fill(`${modelEndpoint}/different-server`);
+  await settingsRestored.locator('#connect').click();
+  await settingsRestored.waitForFunction(() => document.getElementById('connection-status').textContent.includes('Saved keys are not reused'));
+  assert.equal(modelRequests.length, beforeIsolation, 'Remembered keys stay scoped after a browser restart');
+  await settingsRestored.locator('#model-endpoint').fill(modelEndpoint);
+  const otherChat = await browser.newPage();
+  await otherChat.goto(`chrome-extension://${id}/panel.html?web=1`);
+  await otherChat.waitForFunction(() => document.getElementById('status').textContent.includes('Ready'));
+  await settingsRestored.locator('#forget-model-key').click();
+  await settingsRestored.waitForFunction(() => document.getElementById('status').textContent.includes('Connect your model'));
+  await otherChat.waitForFunction(() => document.getElementById('status').textContent.includes('Connect your model'));
+  assert.equal(await otherChat.locator('#send').isDisabled(), true, 'Forgetting a key disconnects other open chats');
+  await otherChat.close();
+  for (const area of ['local', 'session']) assert.equal(await settingsRestored.evaluate(async area => (await chrome.storage[area].get('apiKey')).apiKey, area), undefined);
+  assert.equal(await settingsRestored.locator('#model-endpoint').inputValue(), modelEndpoint);
+  assert.equal(await settingsRestored.locator('#model-id').inputValue(), 'fixture-model-719');
+  await settingsRestored.locator('#connection').evaluate(element => { element.open = true; });
+  await settingsRestored.locator('#api-key').fill('fixture-key-719');
+  await settingsRestored.locator('#remember-model-key').uncheck();
+  await settingsRestored.locator('#connect').click();
+  await settingsRestored.waitForFunction(() => document.getElementById('status').textContent.includes('Ready'));
+  assert.equal(await settingsRestored.evaluate(async () => (await chrome.storage.local.get('apiKey')).apiKey), undefined);
+  await settingsRestored.locator('#connection').evaluate(element => { element.open = true; });
+  await settingsRestored.locator('#connect').scrollIntoViewIfNeeded();
+  await settingsRestored.screenshot({ path: resolve(artifacts, 'session-model.png') });
+  await browser.close();
+  browser = await chromium.launchPersistentContext(profile, { ...browserOptions, args: [`--disable-extensions-except=${extension}`, `--load-extension=${extension}`], viewport: { width: 420, height: 850 } });
+  const sessionExpired = await browser.newPage();
+  await sessionExpired.goto(conversationUrl);
+  await sessionExpired.waitForFunction(() => document.getElementById('status').textContent.includes('Connect your model'));
+  assert.equal(await sessionExpired.locator('#send').isDisabled(), true, 'Session-only credentials expire on browser restart');
+  assert.equal(await sessionExpired.locator('#model-endpoint').inputValue(), modelEndpoint);
+  console.log('PASS: browser controls, history, native API routing and tools, credential isolation, remembered model restart, Forget across chats and session-only expiry');
 } finally {
   await browser?.close();
   await new Promise((done) => server.close(done));

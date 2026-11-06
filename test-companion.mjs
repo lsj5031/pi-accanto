@@ -186,7 +186,7 @@ try {
   assert.equal(await settings.locator('#connection-status').getAttribute('data-state'), 'draft');
   assert.equal(await settings.locator('#connect').textContent(), 'Connect');
   await settings.locator('#connect').click();
-  await settings.waitForFunction(() => document.getElementById('connection-status').textContent.includes('Credential available'));
+  await settings.waitForFunction(() => document.getElementById('connection-status').textContent.includes('Key remembered on this device'));
   assert.equal(await settings.locator('#connection-status').getAttribute('data-state'), 'connected');
   assert.match(await settings.locator('#connection-status').textContent(), /Connected to companion-fixture/);
   assert.equal(await settings.locator('#connect').textContent(), 'Reconnect');

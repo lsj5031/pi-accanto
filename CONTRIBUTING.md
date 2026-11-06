@@ -60,7 +60,9 @@ do not silently pass or skip assertions.
   and conversation. Never silently read unrelated tabs.
 - Treat page/source text as untrusted. Preserve password exclusions, bounded
   extraction, cancellation and honest partial failures.
-- Keep model/search keys out of persistent storage and artifacts. Source reads
+- Store remembered model/search keys only in extension-local storage, never sync
+  storage, page messages or artifacts. Preserve session-only storage and explicit
+  forgetting; keep model credentials scoped to their endpoint and API. Source reads
   reuse Chrome host grants, but remain limited to exact search results in the task.
 - The public companion iframe must authenticate its exact document through the
   isolated host before loading agent code or storage. Page messages must never

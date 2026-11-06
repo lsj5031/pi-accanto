@@ -14,6 +14,7 @@ import { IndexedDbStorage } from '@earendil-works/pi-durable/storage/indexeddb';
 import { createCodemodeExtension, CodemodeStoreDoc } from '@earendil-works/pi-durable/codemode';
 import { createBrowserSandbox } from './codemode.js';
 import { createResearchTools, pagePassages } from './research.js';
+import { readCredential, saveCredential, forgetCredential } from './credentials.js';
 import { marked } from 'marked';
 import DOMPurify from 'dompurify';
 import { readPdf } from './pdf-reader.js';
@@ -614,9 +615,10 @@ async function start() {
   if (conversationTabId !== undefined) parameters.set('tab', conversationTabId);
   window.history.replaceState(null, '', `${location.pathname}?${parameters}${location.hash}`);
   showConversations(conversation.conversations);
+  let changingModel = false;
   chrome.storage.onChanged.addListener((changes, area) => {
     if (area === 'local' && changes.conversations) showConversations(Object.values(changes.conversations.newValue || {}));
-    if (embedded && ((area === 'local' && (changes.modelConnection || changes.mode)) || (area === 'session' && changes.apiKey))) {
+    if (!changingModel && ((area === 'local' && (changes.modelConnection || changes.mode || changes.apiKey)) || (area === 'session' && changes.apiKey))) {
       reconnectPending = true;
       if (!busy) location.reload();
     }
@@ -647,13 +649,15 @@ async function start() {
   const modelId = modelConnection?.modelId || '';
   const modelApi = modelConnection?.api || 'openai-completions';
   const modelConfig = modelApis[modelApi];
-  const credential = await chrome.storage.session.get(['apiKey', 'apiKeyEndpoint', 'apiKeyApi']);
+  const credential = await readCredential('apiKey');
   // Missing API scope belongs only to pre-selector Chat Completions connections.
   const apiKey = endpoint && credential.apiKeyEndpoint === endpoint && (credential.apiKeyApi || 'openai-completions') === modelApi ? credential.apiKey || '' : '';
   const scripted = mode === 'scripted';
   $('model-api').value = modelApi;
   $('model-endpoint').value = endpoint;
   $('model-id').value = modelId;
+  $('remember-model-key').checked = credential.remember;
+  $('forget-model-key').hidden = !credential.apiKey;
   let allSitesAllowed = false;
   const showAccess = async () => {
     allSitesAllowed = await chrome.permissions.contains({ origins: allSiteOrigins });
@@ -668,7 +672,7 @@ async function start() {
     try {
       // Keep the permission request in the original click's user gesture.
       if (allSitesAllowed) {
-        const { searchProvider = 'exa' } = await chrome.storage.session.get('searchProvider');
+        const { searchProvider = 'exa' } = { ...await chrome.storage.local.get('searchProvider'), ...await chrome.storage.session.get('searchProvider') };
         const services = [...chrome.runtime.getManifest().host_permissions.filter(origin => /^https?:/.test(origin)), ...(endpoint ? [`${new URL(endpoint).origin}/*`] : []), searchOrigins[searchProvider]];
         await chrome.permissions.remove({ origins: allSiteOrigins });
         // Chrome removes covered narrow grants too, even required model/API
@@ -684,17 +688,20 @@ async function start() {
   const accessChanged = () => { void showAccess(); void showAttachment(); };
   chrome.permissions.onAdded.addListener(accessChanged);
   chrome.permissions.onRemoved.addListener(accessChanged);
-  const searchConfig = await chrome.storage.session.get(['searchProvider', 'braveStorage']);
+  const searchConfig = { ...await chrome.storage.local.get('searchProvider'), ...await chrome.storage.session.get('searchProvider') };
+  const searchCredentials = { tinyfish: await readCredential('tinyfishKey'), brave: await readCredential('braveKey') };
   const searchNames = { exa: 'Exa', tinyfish: 'TinyFish', brave: 'Brave' };
   $('search-provider').value = searchNames[searchConfig.searchProvider] ? searchConfig.searchProvider : 'exa';
   $('search-state').textContent = `· ${searchNames[$('search-provider').value]}`;
-  $('brave-storage').checked = Boolean(searchConfig.braveStorage);
+  $('brave-storage').checked = Boolean(searchCredentials.brave.braveStorage);
   const showProviderSettings = () => {
     $('brave-settings').hidden = $('search-provider').value !== 'brave';
     $('tinyfish-settings').hidden = $('search-provider').value !== 'tinyfish';
     $('exa-help').hidden = $('search-provider').value !== 'exa';
     $('disable-search').hidden = $('search-provider').value === 'exa';
     $('disable-search').textContent = `Forget ${searchNames[$('search-provider').value]} key`;
+    $('search-key-storage').hidden = $('search-provider').value === 'exa';
+    $('remember-search-key').checked = searchCredentials[$('search-provider').value]?.remember ?? true;
   };
   showProviderSettings();
   $('search-provider').addEventListener('change', () => {
@@ -712,18 +719,23 @@ async function start() {
     try {
       const provider = $('search-provider').value;
       if (provider === 'exa') {
+        await chrome.storage.local.set({ searchProvider: 'exa' });
         await chrome.storage.session.set({ searchProvider: 'exa' });
         $('search-status').textContent = 'Exa selected. No account or API key needed; shared limits apply.';
       } else {
         if (provider === 'brave' && !$('brave-storage').checked) throw new Error('A Brave plan with storage rights is required because conversation history is saved.');
         const keyField = `${provider}Key`;
-        const key = $(`${provider}-key`).value || (await chrome.storage.session.get(keyField))[keyField];
+        const key = $(`${provider}-key`).value.trim() || (await readCredential(keyField))[keyField];
         if (!key) throw new Error(`Enter your ${searchNames[provider]} API key.`);
         const origin = searchOrigins[provider];
         if (!await chrome.permissions.request({ origins: [origin] })) throw new Error(`${searchNames[provider]} host access was declined.`);
-        await chrome.storage.session.set({ searchProvider: provider, [keyField]: key, ...(provider === 'brave' ? { braveStorage: true } : {}) });
+        const remember = $('remember-search-key').checked;
+        await saveCredential(keyField, { [keyField]: key, ...(provider === 'brave' ? { braveStorage: true } : {}) }, remember);
+        searchCredentials[provider] = { remember };
+        await chrome.storage.local.set({ searchProvider: provider });
+        await chrome.storage.session.set({ searchProvider: provider });
         $(`${provider}-key`).value = '';
-        $('search-status').textContent = 'Selected for this browser session. The next search will validate the key and quota.';
+        $('search-status').textContent = `${remember ? 'Key remembered on this device.' : 'Key kept for this browser session only.'} The next search will validate the key and quota.`;
       }
       $('search-state').textContent = `· ${searchNames[provider]}${provider === 'exa' ? '' : ' · Key available'}`;
       showSearchFallback(null);
@@ -731,8 +743,10 @@ async function start() {
   });
   $('disable-search').addEventListener('click', async () => {
     const provider = $('search-provider').value;
-    await chrome.storage.session.remove(provider === 'brave' ? ['braveKey', 'braveStorage'] : ['tinyfishKey']);
+    await forgetCredential(`${provider}Key`);
+    searchCredentials[provider] = { remember: true };
     $(`${provider}-key`).value = '';
+    await chrome.storage.local.set({ searchProvider: 'exa' });
     await chrome.storage.session.set({ searchProvider: 'exa' });
     $('search-provider').value = 'exa';
     showProviderSettings();
@@ -760,10 +774,11 @@ async function start() {
     showModelSettings();
   });
   $('settings').addEventListener('input', event => {
-    if (event.target.matches('#model-endpoint, #model-id, #api-key, #mode')) connectionStatus('draft', 'Changes not applied. Connect to check and save. Your active connection is unchanged.');
+    if (event.target.matches('#model-endpoint, #model-id, #api-key, #remember-model-key, #mode')) connectionStatus('draft', 'Changes not applied. Connect to check and save. Your active connection is unchanged.');
   });
   $('provider-notice').textContent = scripted ? 'Offline check' : modelId || 'Set up model';
-  connectionStatus(scripted ? 'offline' : apiKey ? 'connected' : 'disconnected', scripted ? 'Offline check mode.' : apiKey ? `Connected to ${modelId}. Credential available for this browser session.` : 'Not connected. Enter your API key, then Connect.');
+  const connectedMessage = `Connected to ${modelId}. ${credential.remember ? 'Key remembered on this device.' : 'Key available for this browser session only.'}`;
+  connectionStatus(scripted ? 'offline' : apiKey ? 'connected' : 'disconnected', scripted ? 'Offline check mode.' : apiKey ? connectedMessage : 'Not connected. Enter your API key, then Connect.');
   const modelOrigin = endpoint ? `${new URL(endpoint).origin}/*` : undefined;
   const missingModelAccess = `Model server access is missing for ${endpoint ? new URL(endpoint).host : 'your endpoint'}. Allow model access to reconnect.`;
   const refreshModelAccess = async () => {
@@ -774,7 +789,7 @@ async function start() {
       connectionStatus('permission', `${missingModelAccess} You can also use Connect in settings to allow it again.`);
       if (!busy && !settingsOnly) $('status').textContent = missingModelAccess;
     } else if ($('connection-status').dataset.state === 'permission') {
-      connectionStatus('connected', `Connected to ${modelId}. Credential available for this browser session.`);
+      connectionStatus('connected', connectedMessage);
       if (!busy && !settingsOnly) $('status').textContent = 'Ready · Model access restored. Send your draft again.';
     }
     return allowed;
@@ -843,6 +858,7 @@ async function start() {
   $('settings').addEventListener('submit', async (event) => {
     event.preventDefault();
     $('connect').disabled = true;
+    changingModel = true;
     try {
       if (busy) throw new Error('Stop the current reply before changing models.');
       if ($('mode').value === 'live') {
@@ -870,15 +886,31 @@ async function start() {
         if (!response.ok) throw new Error(`Model endpoint returned HTTP ${response.status}.`);
         const catalog = await response.json();
         if (nextApi === 'google-generative-ai' ? catalog.name !== `models/${nextModel}` : nextApi === 'anthropic-messages' ? !catalog.id : !catalog.data?.some((model) => model.id === nextModel)) throw new Error(`The endpoint does not list model ${nextModel}.`);
-        await chrome.storage.session.set({ apiKey: key, apiKeyEndpoint: nextEndpoint, apiKeyApi: nextApi });
+        await saveCredential('apiKey', { apiKey: key, apiKeyEndpoint: nextEndpoint, apiKeyApi: nextApi }, $('remember-model-key').checked);
         await chrome.storage.local.set({ modelConnection: { endpoint: nextEndpoint, modelId: nextModel, api: nextApi } });
         $('api-key').value = '';
       }
       await chrome.storage.local.set({ mode: $('mode').value });
       location.reload();
     } catch (error) {
+      changingModel = false;
       connectionStatus('error', `Connection failed: ${error.message}`);
       $('connect').disabled = false;
+    }
+  });
+  $('forget-model-key').addEventListener('click', async () => {
+    if (busy) {
+      connectionStatus('error', 'Stop the current reply before forgetting the model key.');
+      return;
+    }
+    changingModel = true;
+    try {
+      await forgetCredential('apiKey');
+      $('api-key').value = '';
+      location.reload();
+    } catch (error) {
+      changingModel = false;
+      connectionStatus('error', `Could not forget the key: ${error.message}`);
     }
   });
   $('restore-companions').addEventListener('click', async () => {

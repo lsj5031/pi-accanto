@@ -189,7 +189,7 @@ try {
   await panel.locator('#save-search').evaluate((element) => element.click());
   await panel.waitForFunction(() => document.getElementById('search-state').textContent.includes('TinyFish'));
   assert.equal(await panel.locator('#tinyfish-key').inputValue(), '');
-  assert.equal(await worker.evaluate(async () => (await chrome.storage.local.get('tinyfishKey')).tinyfishKey), undefined);
+  assert.equal(await worker.evaluate(async () => (await chrome.storage.local.get('tinyfishKey')).tinyfishKey), 'invalid-tinyfish-key');
   const assertSettingsLayout = async () => {
     await panel.locator('#research-settings > summary').scrollIntoViewIfNeeded();
     assert.equal(await panel.evaluate(() => {
@@ -206,6 +206,8 @@ try {
   await panel.setViewportSize({ width: 320, height: 640 });
   await assertSettingsLayout();
   await panel.screenshot({ path: resolve(artifacts, 'tinyfish-settings-narrow.png') });
+  await panel.locator('#save-search').scrollIntoViewIfNeeded();
+  await panel.screenshot({ path: resolve(artifacts, 'tinyfish-key-controls-narrow.png') });
   await panel.setViewportSize({ width: 380, height: 850 });
   if (live) {
     report.tinyfishInvalidKey = await send('Search: Pi Accanto integration test');
@@ -229,10 +231,17 @@ try {
   tinyfishStatus = 429;
   assert.match(await send('Search: TinyFish fixture'), /HTTP 429/);
   assert.deepEqual(exaQueries, ['empty', 'rpc-error', 'tool-error', 'changed', 'limited', 'json']);
+  await panel.locator('#remember-search-key').uncheck();
+  await panel.locator('#save-search').evaluate(element => element.click());
+  await panel.waitForFunction(() => document.getElementById('search-status').textContent.includes('session only'));
+  assert.equal(await worker.evaluate(async () => (await chrome.storage.local.get('tinyfishKey')).tinyfishKey), undefined);
+  tinyfishStatus = 200;
+  assert.match(await send('Search: TinyFish fixture'), /TinyFish fixture snippet/);
   await panel.locator('#disable-search').evaluate((element) => element.click());
   await panel.waitForFunction(() => document.getElementById('search-provider').value === 'exa');
   assert.equal(await worker.evaluate(async () => (await chrome.storage.session.get('tinyfishKey')).tinyfishKey), undefined);
-  report.checks.push('TinyFish optional session key: fixture success and429; no silent Exa fallback; key not in local storage, cleared from input and forgotten explicitly');
+  assert.equal(await worker.evaluate(async () => (await chrome.storage.local.get('tinyfishKey')).tinyfishKey), undefined);
+  report.checks.push('TinyFish remembered key: fixture success and429; no silent Exa fallback; key cleared from input and forgotten from local and session storage');
   await panel.locator('#search-provider').selectOption('brave');
   await worker.evaluate(() => chrome.storage.session.set({ searchProvider: 'brave' }));
   assert.match(await send('Search: public research query'), /not configured/);
@@ -474,6 +483,60 @@ try {
   assert.ok(sourcedAnswer.includes(`${origin}/source`));
   report.liveWebFixture = sourcedAnswer;
   await panel.screenshot({ path: resolve(artifacts, 'live-sourced-answer.png') });
+  }
+  if (!live) {
+    await panel.locator('#connection').evaluate(element => { element.open = true; });
+    await panel.locator('#research-settings').evaluate(element => { element.open = true; });
+    await panel.locator('#search-provider').selectOption('tinyfish');
+    await panel.locator('#tinyfish-key').fill('restart-tinyfish-fixture-key');
+    assert.equal(await panel.locator('#remember-search-key').isChecked(), true);
+    await panel.locator('#save-search').evaluate(element => element.click());
+    await panel.waitForFunction(() => document.getElementById('search-state').textContent.includes('TinyFish'));
+    const restartResearch = async () => {
+      const url = panel.url();
+      await browser.close();
+      browser = await chromium.launchPersistentContext(profile, { ...browserOptions, args: [`--disable-extensions-except=${extension}`, `--load-extension=${extension}`], viewport: { width: 380, height: 850 }, deviceScaleFactor: 2 });
+      await browser.route(/^https?:\/\/(?!127\.0\.0\.1(?=[:/]))/, route => {
+        unexpectedRequests.push(new URL(route.request().url()).origin);
+        return route.abort('blockedbyclient');
+      });
+      panel = await browser.newPage();
+      panel.on('pageerror', error => errors.push(error.message));
+      await panel.goto(url);
+      await panel.waitForFunction(() => document.getElementById('status').textContent.includes('Ready'));
+    };
+    await restartResearch();
+    assert.equal(await panel.locator('#search-provider').inputValue(), 'tinyfish');
+    assert.equal(await panel.locator('#tinyfish-key').inputValue(), '');
+    assert.equal(await panel.locator('#remember-search-key').isChecked(), true);
+    await panel.route('https://api.search.tinyfish.ai/**', async route => {
+      assert.equal(route.request().headers()['x-api-key'], 'restart-tinyfish-fixture-key');
+      await route.fulfill({ json: { results: [{ title: 'Remembered TinyFish', url: `${origin}/source`, snippet: 'TinyFish works after restart.' }] } });
+    });
+    assert.match(await send('Search: restart'), /TinyFish works after restart/);
+    await panel.locator('#connection').evaluate(element => { element.open = true; });
+    await panel.locator('#research-settings').evaluate(element => { element.open = true; });
+    await panel.locator('#remember-search-key').uncheck();
+    await panel.locator('#save-search').evaluate(element => element.click());
+    await panel.waitForFunction(() => document.getElementById('search-status').textContent.includes('session only'));
+    await panel.locator('#search-provider').selectOption('brave');
+    assert.equal(await panel.locator('#brave-storage').isChecked(), true, 'Brave storage-rights consent survives with the remembered key');
+    await panel.locator('#save-search').evaluate(element => element.click());
+    await panel.waitForFunction(() => document.getElementById('search-state').textContent.includes('Brave'));
+    await panel.route('https://api.search.brave.com/**', async route => {
+      assert.equal(route.request().headers()['x-subscription-token'], 'invalid-test-key');
+      await route.fulfill({ json: { web: { results: [{ title: 'Remembered Brave', url: `${origin}/source`, description: 'Brave works after restart.' }] } } });
+    });
+    assert.match(await send('Search: restart'), /Brave works after restart/);
+    await panel.locator('#remember-search-key').uncheck();
+    await panel.locator('#save-search').evaluate(element => element.click());
+    await panel.waitForFunction(() => document.getElementById('search-status').textContent.includes('session only'));
+    assert.deepEqual(await panel.evaluate(() => chrome.storage.local.get(['tinyfishKey', 'braveKey', 'braveStorage'])), {}, 'Switching to session-only removes persisted keys and consent');
+    await restartResearch();
+    assert.equal(await panel.locator('#search-provider').inputValue(), 'brave', 'Provider choice persists even when a session key expires');
+    assert.deepEqual(await panel.evaluate(() => chrome.storage.session.get(['tinyfishKey', 'braveKey', 'braveStorage'])), {});
+    assert.match(await send('Search: expired'), /not configured/);
+    report.checks.push('Real browser restarts: remembered TinyFish and Brave authenticate searches; Brave consent persists; changing to session-only deletes saved copies and expires both keys on restart');
   }
   assert.deepEqual(errors, []);
   assert.deepEqual(unexpectedRequests, [], 'Fixture checks must not fall through to real external services');

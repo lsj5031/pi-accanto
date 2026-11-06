@@ -101,8 +101,13 @@ Changing the endpoint or API format requires the corresponding key.
 
 </details>
 
-**Keys last for the browser session.** Enter them again after restarting Chrome.
-They aren't saved in persistent local storage or shared with the website.
+**Keys are remembered on this device by default**, so restarting Chrome doesn't
+disconnect your model. Uncheck **Remember API key on this device** before
+connecting for session-only storage. **Forget key** removes the key while keeping
+your endpoint and model settings.
+
+Remembered keys live in this extension's local Chrome profile storage. They aren't
+synced or shared with websites; this isn't an encrypted OS credential vault.
 
 ### 3. Ask your first question
 
@@ -172,8 +177,9 @@ Shared limits sometimes make it unavailable. For your own search account, open
 
 ![Search settings with TinyFish selected and its empty API key field](docs/screenshots/search-settings.png)
 
-Search keys are session-only too. **Forget key** removes the selected key and
-returns search to Exa. Accanto doesn't silently switch providers when a search fails.
+Search keys use the same **Remember API key on this device** choice. **Forget key**
+removes both remembered and session copies of the selected key and returns search
+to Exa. Accanto doesn't silently switch providers when a search fails.
 
 Search results start with snippets. Accanto can read the full text of exact
 results returned in the current task using your existing Chrome website access.
@@ -250,7 +256,7 @@ tokens. These limits aren't editable yet and must suit your server/model.
 | --- | --- |
 | The companion is missing | Click the extension's toolbar icon. Allow the website for automatic appearance. Restore hidden sites under **Settings → Companion**. |
 | **Send** is disabled | Connect a model in Settings. Check the URL, model ID and API key. |
-| A key disappeared | Re-enter it after restarting Chrome. Keys are deliberately session-only. |
+| A key disappeared | Session-only keys expire when Chrome restarts. Re-enter it and leave **Remember API key on this device** checked to keep it. |
 | Accanto can't read a page | Allow the site and explicitly attach it using the context chip. Chrome and other extensions' own pages can't be read. |
 | Search fails | Check the provider, key and quota, or choose **Open search in browser**. |
 | Another window owns the chat | Choose **Continue here**, or return to the existing companion. |
