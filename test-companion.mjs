@@ -15,6 +15,8 @@ const manifest = JSON.parse(await readFile(resolve(extension, 'manifest.json'), 
 assert.equal(manifest.permissions.includes('sidePanel'), false, 'Accanto must not request Chrome sidebar access');
 assert.equal('side_panel' in manifest, false, 'Accanto must not register a sidebar');
 manifest.host_permissions.push('http://127.0.0.1/*');
+// Simulate an unavailable assignment; native shortcut tests cover the defaults.
+delete manifest.commands['enlarge-chat'].suggested_key;
 await writeFile(resolve(extension, 'manifest.json'), JSON.stringify(manifest));
 const invoice = await readFile('docs/examples/code-mode-invoice.html', 'utf8');
 const calculation = String.raw`const page = JSON.parse(await tools.inspect_tab({})); const m = page.text.match(/(\d+) at (\d+\.\d{2}); delivery (\d+\.\d{2})/); text(Number(m[1]) * Number(m[2]) + Number(m[3]));`;
@@ -75,6 +77,12 @@ const ready = frame => frame.waitForFunction(() => document.getElementById('stat
 // requestAnimationFrame pauses in clipped frames, although the agent keeps
 // running. Observe completion with timer polling while it is minimized.
 const idle = frame => frame.waitForFunction(() => !document.getElementById('send').disabled, null, { polling: 100 });
+// Portable checks exercise command routing. test:shortcuts separately verifies
+// actual Windows/Chrome accelerators; CDP key events cannot establish that.
+const command = (page, name) => worker.evaluate(async ({ url, name }) => {
+  const tab = (await chrome.tabs.query({})).find(tab => tab.url === url);
+  await handleCommand(name, tab);
+}, { url: page.url(), name });
 const open = async page => {
   await page.bringToFront();
   await fitWindow(page);
@@ -203,7 +211,9 @@ try {
   await a.getByRole('button', { name: 'Keyboard shortcuts', exact: true }).click();
   await a.getByRole('dialog', { name: 'Keyboard shortcuts' }).waitFor();
   await a.getByRole('button', { name: 'Close keyboard shortcuts' }).waitFor();
-  assert.equal(await a.locator('#move-shortcut').isVisible(), true);
+  assert.equal(await a.getByText('Move / resize', { exact: true }).count(), 0);
+  await a.waitForFunction(() => document.getElementById('tab-shortcut').textContent === 'Alt+Shift+S');
+  assert.equal(await a.locator('#enlarge-key').textContent(), 'Not assigned', 'Help must reflect unavailable Chrome assignments instead of advertising a default');
   await page.screenshot({ path: resolve(artifacts, 'shortcuts.png') });
   await page.keyboard.press('Escape');
   assert.equal(await a.locator('#keyboard-shortcuts').isVisible(), false);
@@ -302,6 +312,8 @@ try {
   await page.screenshot({ path: resolve(artifacts, 'composer-long.png') });
   await a.locator('#prompt').fill('');
   assert.equal(await a.locator('#prompt').evaluate(element => element.clientHeight), collapsedHeight, 'Clearing a draft must collapse the composer');
+  await a.locator('#new-conversation').evaluate(button => button.click());
+  await idle(a);
   await send(a, 'What is the invoice total?');
   await idle(a);
   assert.match(await a.locator('article.toolResult').last().textContent(), /90\.75/);
@@ -343,26 +355,29 @@ try {
   assert.equal(moved.x, box.x - 130);
   assert.equal(moved.y, box.y - 80);
   await page.keyboard.press('ArrowLeft');
-  assert.ok((await page.locator('[data-accanto-companion]').boundingBox()).x < moved.x);
-  box = await page.locator('[data-accanto-companion]').boundingBox();
-  await page.mouse.move(box.x + box.width - 3, box.y + box.height - 3);
-  await page.mouse.down(); await page.mouse.move(box.x + box.width + 47, box.y + box.height + 37, { steps: 5 }); await page.mouse.up();
-  const resized = await page.locator('[data-accanto-companion]').boundingBox();
-  assert.equal(resized.x, box.x, 'Resizing must keep the left edge fixed');
-  assert.equal(resized.y, box.y, 'Resizing must keep the top edge fixed');
-  assert.equal(resized.width, box.width + 50);
-  assert.equal(resized.height, box.height + 40);
-  await page.keyboard.press('ArrowLeft');
-  await page.keyboard.press('ArrowUp');
-  const keyboardResized = await page.locator('[data-accanto-companion]').boundingBox();
-  assert.deepEqual(keyboardResized, { ...resized, width: resized.width - 16, height: resized.height - 16 });
-  await a.waitForFunction(({ width, height }) => innerWidth === width - 2 && innerHeight === height - 2, keyboardResized);
-  await a.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
-  await page.screenshot({ path: resolve(artifacts, 'resized.png') });
+  const position = await page.locator('[data-accanto-companion]').boundingBox();
+  assert.deepEqual(position, { ...moved, x: moved.x - 16 }, 'Arrow keys must still move the focused drag handle');
+  await a.locator('#prompt').fill('Keep this unsent draft while enlarging');
+  await a.getByRole('button', { name: 'Enlarge chat', exact: true }).click();
+  await a.getByRole('button', { name: 'Restore chat size', exact: true }).waitFor();
+  const enlarged = await page.locator('[data-accanto-companion]').boundingBox();
+  assert.equal(enlarged.width, 900);
+  assert.equal(enlarged.height, 792);
+  assert.ok(enlarged.x >= 12 && enlarged.x + enlarged.width <= 1268 && enlarged.y >= 12 && enlarged.y + enlarged.height <= 828);
+  await a.evaluate(() => {
+    document.querySelector('.turn-activity').open = false;
+    document.getElementById('transcript').scrollTop = 0;
+  });
+  await page.screenshot({ path: resolve(artifacts, 'enlarged.png') });
+  await command(page, 'enlarge-chat');
+  await a.getByRole('button', { name: 'Enlarge chat', exact: true }).waitFor();
+  assert.deepEqual(await page.locator('[data-accanto-companion]').boundingBox(), position, 'Restore must preserve the previous size and position');
+  assert.equal(await a.locator('#prompt').inputValue(), 'Keep this unsent draft while enlarging');
+  await a.locator('#prompt').fill('');
   await a.locator('#minimize').click();
   await page.screenshot({ path: resolve(artifacts, 'moved-collapsed.png') });
   a = await open(page);
-  assert.deepEqual(await page.locator('[data-accanto-companion]').boundingBox(), keyboardResized, 'Reopening must preserve position and size');
+  assert.deepEqual(await page.locator('[data-accanto-companion]').boundingBox(), position, 'Reopening must preserve position and size');
   assert.match(await a.locator('#transcript').textContent(), /90\.75/);
   await page.setViewportSize({ width: 390, height: 640 });
   await page.screenshot({ path: resolve(artifacts, 'narrow.png') });
@@ -488,14 +503,16 @@ try {
   box = await page.locator('[data-accanto-companion]').boundingBox();
   await page.mouse.click(box.x + 26, box.y + 26, { button: 'right' });
   await page.screenshot({ path: resolve(artifacts, 'companion-menu.png') });
+  await page.keyboard.press('Escape');
+  a = await open(page);
   const agentOpened = browser.waitForEvent('page');
-  await page.keyboard.press('Enter');
+  await command(page, 'open-chat-tab');
   const agent = await agentOpened; await ready(agent);
   assert.ok(agent.url().startsWith(`${base}/panel.html`));
   assert.equal(new URL(agent.url()).searchParams.get('conversation'), idA);
   assert.match(await agent.locator('#transcript').textContent(), /ONLY-A/);
   await agent.locator('#open-shortcuts').click();
-  assert.equal(await agent.locator('#move-shortcut').isVisible(), false, 'Standalone help must omit floating-only controls');
+  assert.equal(await agent.locator('#enlarge-shortcut').isVisible(), false, 'Standalone help must omit floating-only controls');
   await agent.screenshot({ path: resolve(artifacts, 'shortcuts-tab.png') });
   const shortcutSettingsOpened = browser.waitForEvent('page');
   await agent.locator('#customize-shortcuts').click();
@@ -561,9 +578,32 @@ try {
   assert.equal(new URL(fallback.url()).searchParams.get('tab'), String(sourceId));
   assert.equal(await fallback.locator('#target').getAttribute('title'), plain.url());
   await fallback.screenshot({ path: resolve(artifacts, 'tab-fallback.png') });
+  await worker.evaluate(() => chrome.storage.local.set({ mode: 'scripted' }));
+  const blank = await browser.newPage();
+  await blank.goto('chrome://newtab/');
+  await blank.bringToFront();
+  const detachedOpened = browser.waitForEvent('page');
+  const blankUrl = await worker.evaluate(async () => {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    openAccanto(tab);
+    return tab.url;
+  });
+  assert.match(blankUrl, /^chrome:/);
+  const detached = await detachedOpened;
+  await ready(detached);
+  assert.match(await detached.locator('#composer-target').textContent(), /No tab attached/);
+  assert.equal(await detached.locator('#target').getAttribute('title'), '');
+  assert.match(await detached.locator('#prompt').getAttribute('placeholder'), /Ask anything/);
+  await send(detached, 'Code: text(3 * 7);'); await idle(detached);
+  assert.match(await detached.locator('article.toolResult').last().textContent(), /21/);
+  await detached.reload(); await ready(detached);
+  assert.match(await detached.locator('#composer-target').textContent(), /No tab attached/, 'No-page mode must survive reload');
+  await detached.locator('#new-conversation').evaluate(button => button.click()); await idle(detached);
+  assert.match(await detached.locator('#composer-target').textContent(), /No tab attached/, 'A fresh standalone chat must not attach the blank source tab');
+  await detached.screenshot({ path: resolve(artifacts, 'no-tab-attached.png') });
   assert.deepEqual(errors, []);
-  await writeFile(resolve(artifacts, 'report.json'), JSON.stringify({ model: 'Synthetic streaming API fixture, not live model inference', firstUse: true, separateSettings: true, codeMode: 90.75, rejectedRogueFrame: true, drag: true, resize: true, narrow: true, concurrentAgents: true, minimizedRunCompleted: true, navigationAndHandoff: true, hideAndRestore: true, strictCspWorked: true, ungrantedSiteUntouched: true }, null, 2));
-  console.log('PASS: real companion injection, setup, Code Mode, security, drag/resize, narrow layout, concurrent minimized agents, navigation/handoff, hide/restore, strict CSP and ungranted-site isolation.');
+  await writeFile(resolve(artifacts, 'report.json'), JSON.stringify({ model: 'Synthetic streaming API fixture, not live model inference', firstUse: true, separateSettings: true, codeMode: 90.75, rejectedRogueFrame: true, drag: true, keyboardMove: true, enlargeRestore: true, shortcutOpenInTab: true, noPageDefault: true, narrow: true, concurrentAgents: true, minimizedRunCompleted: true, navigationAndHandoff: true, hideAndRestore: true, strictCspWorked: true, ungrantedSiteUntouched: true }, null, 2));
+  console.log('PASS: real companion injection, setup, Code Mode, security, drag and keyboard movement, enlarge/restore, no-page defaults, narrow layout, concurrent minimized agents, navigation/handoff, hide/restore, strict CSP and ungranted-site isolation.');
 } catch (error) {
   if (browser) await writeFile(resolve(artifacts, 'failure.json'), JSON.stringify({ error: String(error), pending: [...pending.keys()], frames: await Promise.all(browser.pages().flatMap(page => page.frames()).map(async frame => ({ url: frame.url(), state: await frame.evaluate(() => ({ status: document.getElementById('status')?.textContent, text: document.getElementById('transcript')?.textContent, prompt: document.getElementById('prompt')?.value, busy: document.body.dataset.busy })).catch(() => null) }))) }, null, 2));
   if (browser) for (const [index, page] of browser.pages().entries()) await page.screenshot({ path: resolve(artifacts, `failure-${index}.png`) }).catch(() => {});

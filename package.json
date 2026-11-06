@@ -21,6 +21,7 @@
     "test:conversations": "node test-conversations.mjs",
     "test:companion": "node test-companion.mjs",
     "test:native": "node test-native.mjs",
+    "test:shortcuts": "node test-shortcuts.mjs",
     "test:fixtures": "npm test && npm run test:conversations && npm run test:pdf && npm run test:research && npm run test:companion"
   },
   "dependencies": {

@@ -1,13 +1,26 @@
-chrome.action.onClicked.addListener((tab) => {
-  if (/^https?:/.test(tab.url || '') && !/\.pdf(?:[?#]|$)/i.test(tab.url)) void openCompanion(tab);
-  else void openAgentTab(tab.id);
-});
+chrome.action.onClicked.addListener(openAccanto);
+chrome.commands.onCommand.addListener((command, tab) => { void handleCommand(command, tab); });
 
-function openAgentTab(tabId, handoff = false) {
-  return chrome.tabs.create({ url: chrome.runtime.getURL(`panel.html?tab=${tabId}${handoff ? '#continue' : ''}`), active: !handoff });
+async function handleCommand(command, tab) {
+  const action = { 'enlarge-chat': 'enlarge', 'open-chat-tab': 'tab' }[command];
+  if (!action) return;
+  if (!tab) [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  if (!tab || tab.url?.startsWith(chrome.runtime.getURL('panel.html'))) return;
+  if (/^https?:/.test(tab.url || '') && !/\.pdf(?:[?#]|$)/i.test(tab.url)) await openCompanion(tab, action);
+  else if (action === 'tab') await openAgentTab(/^(https?:|file:)/.test(tab.url || '') ? tab.id : undefined);
 }
 
-async function openCompanion(tab) {
+function openAccanto(tab) {
+  if (/^https?:/.test(tab.url || '') && !/\.pdf(?:[?#]|$)/i.test(tab.url)) void openCompanion(tab);
+  else void openAgentTab(/^(https?:|file:)/.test(tab.url || '') ? tab.id : undefined);
+}
+
+function openAgentTab(tabId, handoff = false) {
+  const context = Number.isInteger(tabId) ? `tab=${tabId}` : 'web=1';
+  return chrome.tabs.create({ url: chrome.runtime.getURL(`panel.html?${context}${handoff ? '#continue' : ''}`), active: !handoff });
+}
+
+async function openCompanion(tab, action) {
   try {
     // A toolbar click also restores a companion hidden on this website.
     const { companionHiddenSites = [] } = await chrome.storage.local.get('companionHiddenSites');
@@ -16,7 +29,7 @@ async function openCompanion(tab) {
       await chrome.storage.local.set({ companionHiddenSites: companionHiddenSites.filter(site => site !== origin) });
     }
     await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ['companion-host.js'] });
-    const result = await chrome.tabs.sendMessage(tab.id, { type: 'companion-open' }, { frameId: 0 });
+    const result = await chrome.tabs.sendMessage(tab.id, { type: 'companion-open', action }, { frameId: 0 });
     if (!result?.ok) throw new Error('Companion unavailable');
   } catch {
     // Preserve the source tab when a document cannot host the companion.

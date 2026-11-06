@@ -513,6 +513,7 @@ async function showAttachment() {
   $('target').textContent = webResearch ? 'Web research' : target?.title || current?.title || 'Current tab';
   $('target').title = webResearch ? '' : target?.url || current?.url || '';
   $('composer-target').textContent = webResearch ? 'Ask the web · No tab attached' : target ? `Message about: ${target.title}` : 'Ask about this page';
+  $('prompt').placeholder = webResearch ? 'Ask anything or search the web…' : 'Ask about this page...';
   $('target-hint').textContent = webResearch ? 'No tab content is included' : hint;
   $('tab-switch').hidden = !target || (available && current?.id === target.id);
   $('current-tab-label').textContent = current?.title ? `Viewing: ${current.title}` : 'You’re viewing another tab';
@@ -576,14 +577,22 @@ async function start() {
   $('connect-model').addEventListener('click', openSettings);
   $('connect-model').disabled = false;
   $('open-settings').addEventListener('click', openSettings);
-  $('open-settings').hidden = $('minimize').hidden = !embedded;
+  $('open-settings').hidden = $('minimize').hidden = $('enlarge').hidden = !embedded;
   $('minimize').addEventListener('click', () => parent.postMessage({ type: 'accanto-minimize' }, '*'));
+  $('enlarge').addEventListener('click', () => parent.postMessage({ type: 'accanto-window', action: 'enlarge' }, '*'));
+  if (embedded) addEventListener('message', event => {
+    if (event.source !== parent || event.data?.type !== 'accanto-window-state') return;
+    $('enlarge').setAttribute('aria-pressed', String(event.data.enlarged === true));
+    $('enlarge').setAttribute('aria-label', event.data.enlarged ? 'Restore chat size' : 'Enlarge chat');
+  });
   $('send-modifier').textContent = /mac/i.test(navigator.userAgentData?.platform || navigator.platform) ? '⌘' : 'Ctrl';
-  for (const id of ['minimize-shortcut', 'move-shortcut', 'move-shortcut-help']) $(id).hidden = !embedded;
+  for (const id of ['minimize-shortcut', 'enlarge-shortcut']) $(id).hidden = !embedded;
   $('open-shortcuts').addEventListener('click', async () => {
     $('keyboard-shortcuts').showModal();
     const commands = await chrome.commands.getAll();
-    $('open-shortcut').textContent = commands.find(command => command.name === '_execute_action')?.shortcut || 'Not assigned';
+    for (const [id, name] of Object.entries({ 'open-shortcut': '_execute_action', 'enlarge-key': 'enlarge-chat', 'tab-shortcut': 'open-chat-tab' })) {
+      $(id).textContent = commands.find(command => command.name === name)?.shortcut || 'Not assigned';
+    }
   });
   $('customize-shortcuts').addEventListener('click', () => {
     void chrome.tabs.create({ url: 'chrome://extensions/shortcuts' });
@@ -627,6 +636,12 @@ async function start() {
     // a hidden source while its handoff is still in progress.
     void chrome.tabs.create({ url: `${chrome.runtime.getURL('panel.html')}?${parameters}#continue`, active: false });
   });
+  if (!embedded && !settingsOnly) {
+    const currentTab = await chrome.tabs.getCurrent();
+    chrome.commands.onCommand.addListener((command, tab) => {
+      if (command === 'open-chat-tab' && tab?.id === currentTab.id) $('open-conversation').click();
+    });
+  }
   const { mode = 'live', modelConnection } = await chrome.storage.local.get(['mode', 'modelConnection']);
   const endpoint = modelConnection?.endpoint || '';
   const modelId = modelConnection?.modelId || '';
@@ -1002,7 +1017,8 @@ async function start() {
   const savedTarget = [...history.values()].findLast((entry) => entry.kind === 'accanto.target')?.data;
   useConversationTab = !savedTarget;
   attachment = savedTarget?.target;
-  webResearch = Boolean(savedTarget?.web);
+  webResearch = Boolean(savedTarget?.web || (!savedTarget && parameters.has('web')));
+  if (!savedTarget && webResearch) await writeTarget({ target: null, web: true });
   const view = await root.viewState(context);
   render(view.value);
   view.subscribe(render);
@@ -1066,9 +1082,10 @@ async function start() {
       $('use-current-tab').disabled = $('new-conversation').disabled = $('web-conversation').disabled = $('send').disabled = true;
       try {
         if (id === 'new-conversation' || id === 'web-conversation') {
-          await writeTarget({ target: null, fresh: id === 'new-conversation', web: id === 'web-conversation' });
+          const web = id === 'web-conversation' || (!embedded && parameters.has('web'));
+          await writeTarget({ target: null, fresh: id === 'new-conversation', web });
           attachment = undefined;
-          webResearch = id === 'web-conversation';
+          webResearch = web;
           sources.clear();
           showSources();
           $('prompt').value = '';

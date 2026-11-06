@@ -205,6 +205,7 @@ textarea::placeholder { color: #9aa68f; font-size: 13px; }
 body[data-busy=true] #stop { display: inline-block; }
 body[data-busy=true] #send { display: none; }
 body[data-embedded=true] #connection { display: none; }
+body[data-embedded=true] .product-header { padding-inline: 12px; }
 body[data-settings=true] { overflow-y: auto; height: auto; min-height: 100dvh; }
 body[data-settings=true] > :not(.product-header) { display: none; }
 body[data-settings=true] .header-actions > :not(#connection) { display: none; }

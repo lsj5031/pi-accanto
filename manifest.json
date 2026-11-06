@@ -11,7 +11,11 @@
     "default_title": "Open Pi Accanto",
     "default_icon": { "16": "assets/icon-16.png", "32": "assets/icon-32.png" }
   },
-  "commands": { "_execute_action": { "suggested_key": { "default": "Alt+Shift+Q" } } },
+  "commands": {
+    "_execute_action": { "suggested_key": { "default": "Alt+Shift+Q" } },
+    "enlarge-chat": { "suggested_key": { "default": "Alt+Shift+D" }, "description": "Enlarge or restore Accanto" },
+    "open-chat-tab": { "suggested_key": { "default": "Alt+Shift+S" }, "description": "Open the current Accanto chat in a tab" }
+  },
   "background": { "service_worker": "background.js" },
   "web_accessible_resources": [{ "resources": ["companion.html"], "matches": ["http://*/*", "https://*/*"] }],
   "content_security_policy": { "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'; worker-src 'self'; connect-src 'self' http: https: file:" }

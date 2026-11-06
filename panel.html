@@ -51,6 +51,7 @@
       <div id="search-settings-slot"></div>
       </div>
     </details>
+    <button type="button" id="enlarge" class="icon-button" aria-label="Enlarge chat" aria-pressed="false" title="Enlarge or restore" hidden><svg viewBox="0 0 20 20"><path d="M7 3H3v4M13 3h4v4M17 13v4h-4M7 17H3v-4"/></svg></button>
     <button type="button" id="minimize" class="icon-button" aria-label="Minimize Accanto" title="Minimize" hidden><svg viewBox="0 0 20 20"><path d="M5 10h10"/></svg></button>
     </div>
   </header>
@@ -152,12 +153,12 @@
     <dl class="shortcut-list">
       <div><dt>Open Accanto</dt><dd id="open-shortcut">Not assigned</dd></div>
       <div><dt>Send message</dt><dd><kbd id="send-modifier">Ctrl</kbd> + <kbd>Enter</kbd></dd></div>
-      <div><dt>Close menu or help</dt><dd><kbd>Esc</kbd></dd></div>
+      <div id="enlarge-shortcut"><dt>Enlarge / restore</dt><dd id="enlarge-key">Not assigned</dd></div>
+      <div><dt>Open chat in a tab</dt><dd id="tab-shortcut">Not assigned</dd></div>
       <div id="minimize-shortcut"><dt>Minimize companion</dt><dd><kbd>Esc</kbd></dd></div>
-      <div id="move-shortcut"><dt>Move or resize</dt><dd><kbd>↑</kbd> <kbd>↓</kbd> <kbd>←</kbd> <kbd>→</kbd></dd></div>
+      <div><dt>Close menu or help</dt><dd><kbd>Esc</kbd></dd></div>
     </dl>
-    <p id="move-shortcut-help">Focus the top grip or resize handle to use the arrow keys. Escape minimizes when no menu or help is open.</p>
-    <p>The opening shortcut works while browsing. The others work inside Accanto.</p>
+    <p>Chrome shortcuts work while browsing, even outside the chat. If one is not assigned or conflicts with another app, choose a different combination below.</p>
     </div>
     <button type="button" id="customize-shortcuts">Customize in Chrome <span aria-hidden="true">↗</span></button>
   </dialog>

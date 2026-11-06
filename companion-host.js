@@ -16,11 +16,10 @@
     .face{position:relative;width:26px;height:23px;border-radius:9px;background:#8da76e}.face:before,.face:after{content:'';position:absolute;top:8px;width:3px;height:7px;border-radius:3px;background:#fff}.face:before{left:7px}.face:after{right:7px}
     .launcher[data-busy=true]:after{content:'';position:absolute;right:1px;top:1px;width:9px;height:9px;border:2px solid white;border-radius:50%;background:#486b36}
     .window{pointer-events:auto;position:relative;width:min(380px,calc(100vw - 24px));height:min(420px,calc(100dvh - 48px));min-width:min(300px,calc(100vw - 24px));min-height:min(320px,calc(100dvh - 48px));max-width:calc(100vw - 24px);max-height:calc(100dvh - 48px);border:1px solid #d9e2cf;border-radius:20px;background:#fcfdf8;box-shadow:0 16px 54px #23321a26;overflow:hidden}
-    .window[data-closed=true]{position:absolute;right:0;bottom:0;opacity:0;pointer-events:none;clip-path:inset(100%);resize:none}
+    .window[data-closed=true]{position:absolute;right:0;bottom:0;opacity:0;pointer-events:none;clip-path:inset(100%)}
     iframe{border:0;width:100%;height:100%;display:block;background:#fcfdf8}
     .grip{pointer-events:auto;position:absolute;z-index:1;left:calc(50% - 32px);top:0;width:64px;height:13px;padding:0;border:0;background:transparent;cursor:grab;touch-action:none}.grip:after{content:'';display:block;width:26px;height:3px;margin:auto;border-radius:4px;background:#dbe3cf}.grip:active{cursor:grabbing;transform:none}
-    .resizer{pointer-events:auto;position:absolute;z-index:1;right:0;bottom:0;width:20px;height:20px;padding:0;border:0;background:transparent;cursor:nwse-resize;touch-action:none}.resizer:after{content:'';position:absolute;right:5px;bottom:5px;width:8px;height:8px;background:repeating-linear-gradient(135deg,transparent 0 3px,#a8b79b 3px 4px);clip-path:polygon(100% 0,100% 100%,0 100%)}.resizer:active{transform:none}
-    .grip:focus-visible{outline-offset:-2px;border-radius:5px}.resizer:focus-visible{outline-offset:-4px;border-radius:10px}
+    .grip:focus-visible{outline-offset:-2px;border-radius:5px}
     .menu,.fallback{pointer-events:auto;position:absolute;right:0;bottom:62px;width:210px;padding:6px;border:1px solid #d9e2cf;border-radius:12px;background:#fcfdf8;box-shadow:0 6px 24px #23321a20;font:13px/1.5 system-ui,sans-serif;color:#465a3c}.menu button{display:block;width:100%;padding:9px;border:0;border-radius:6px;text-align:left;background:transparent}.fallback{bottom:0;width:100%;height:100%;padding:64px 24px 24px}.fallback button{padding:9px 12px;border:1px solid #cddcbe;border-radius:8px;background:#e8efdc}.fallback p{margin:0 0 18px}
     @media(hover:hover) and (pointer:fine){.launcher:hover{background:#dfe9d1;transform:translateY(-2px)}.launcher:hover .face:before,.launcher:hover .face:after{height:5px;transform:translateY(-1px)}.menu button:hover{background:#edf2e5}}
     @media(max-width:480px){.window{width:calc(100vw - 24px)}}
@@ -30,24 +29,17 @@
   <div class="menu" hidden><button data-action="tab">Open in a tab</button><button data-action="hide">Hide on this site</button></div>
   <section class="window" data-closed="true" aria-label="Accanto companion" inert hidden>
     <button class="grip" aria-label="Move Accanto. Drag or use arrow keys." title="Drag to move"></button>
-    <button class="resizer" aria-label="Resize Accanto. Drag or use arrow keys." title="Drag to resize"></button>
     <div class="fallback" hidden><p>This page could not open the companion. Continue in an Accanto tab.</p><button data-action="tab">Open in a tab</button></div>
   </section>`;
   const launcher = shadow.querySelector('.launcher');
   const card = shadow.querySelector('.window');
   const grip = shadow.querySelector('.grip');
-  const resizer = shadow.querySelector('.resizer');
   const menu = shadow.querySelector('.menu');
   let frame;
   let open = false;
   let timer;
   let drag;
-  let resizing;
-  const resize = (width, height, left, top) => {
-    card.style.width = `${Math.max(Math.min(300, innerWidth - 24), Math.min(width, innerWidth - left - 12))}px`;
-    card.style.height = `${Math.max(Math.min(320, innerHeight - 48), Math.min(height, innerHeight - top - 12))}px`;
-    place(innerWidth - left - card.offsetWidth, innerHeight - top - card.offsetHeight);
-  };
+  let restoreBounds;
   const place = (right, bottom) => {
     const width = open ? card.offsetWidth : 52;
     const height = open ? card.offsetHeight : 52;
@@ -55,6 +47,21 @@
     host.style.setProperty('bottom', `${Math.max(12, Math.min(bottom, innerHeight - height - 12))}px`, 'important');
   };
   const clamp = () => place(parseFloat(host.style.right), parseFloat(host.style.bottom));
+  const windowState = () => frame?.contentWindow.postMessage({ type: 'accanto-window-state', enlarged: Boolean(restoreBounds) }, extensionOrigin);
+  const enlarge = () => {
+    if (restoreBounds) {
+      card.style.width = `${restoreBounds.width}px`;
+      card.style.height = `${restoreBounds.height}px`;
+      place(restoreBounds.right, restoreBounds.bottom);
+      restoreBounds = undefined;
+    } else {
+      restoreBounds = { width: card.offsetWidth, height: card.offsetHeight, right: parseFloat(host.style.right), bottom: parseFloat(host.style.bottom) };
+      card.style.width = `${Math.min(900, innerWidth - 24)}px`;
+      card.style.height = `${innerHeight - 48}px`;
+      place((innerWidth - card.offsetWidth) / 2, 24);
+    }
+    windowState();
+  };
   const minimize = () => {
     open = false;
     card.dataset.closed = 'true';
@@ -72,13 +79,24 @@
       frame.contentWindow.postMessage({ type: 'accanto-challenge', challenge: message.challenge }, extensionOrigin);
       reply({ ok: true });
     }
-    if (message.type === 'companion-open') { show(); reply({ ok: true }); }
+    if (message.type === 'companion-open') {
+      if (message.action === 'tab') {
+        openTab().then(() => reply({ ok: true }), () => reply({ ok: false }));
+        return true;
+      }
+      show();
+      if (message.action === 'enlarge') enlarge();
+      reply({ ok: true });
+    }
     if (message.type === 'companion-remove') remove();
   };
   const fromFrame = event => {
     if (!frame || event.origin !== extensionOrigin || event.source !== frame.contentWindow) return;
-    if (event.data?.type === 'accanto-ready') { clearTimeout(timer); shadow.querySelector('.fallback').hidden = true; }
+    if (event.data?.type === 'accanto-ready') { clearTimeout(timer); shadow.querySelector('.fallback').hidden = true; windowState(); }
     if (event.data?.type === 'accanto-minimize') minimize();
+    if (event.data?.type === 'accanto-window' && open) {
+      if (event.data.action === 'enlarge') enlarge();
+    }
     if (event.data?.type === 'accanto-busy') {
       launcher.dataset.busy = String(event.data.busy === true);
       menu.querySelector('[data-action=tab]').disabled = event.data.busy === true;
@@ -108,16 +126,25 @@
   };
   launcher.addEventListener('click', show);
   launcher.addEventListener('contextmenu', event => { event.preventDefault(); menu.hidden = !menu.hidden; if (!menu.hidden) menu.querySelector('button:not(:disabled)').focus(); });
-  shadow.addEventListener('keydown', event => { if (event.key === 'Escape') { menu.hidden = true; if (open) minimize(); else launcher.focus(); } });
+  const openTab = async () => {
+    if (menu.querySelector('[data-action=tab]').disabled) return;
+    const result = await chrome.runtime.sendMessage({ type: 'companion-tab' });
+    if (result?.error) { shadow.querySelector('.fallback p').textContent = 'Accanto could not open a tab. Try again using the toolbar icon.'; shadow.querySelector('.fallback').hidden = false; }
+    else minimize();
+    menu.hidden = true;
+  };
+  shadow.addEventListener('keydown', event => {
+    if (event.key === 'Escape' && open && shadow.activeElement === grip) {
+      event.preventDefault();
+      frame.contentWindow.focus();
+      return;
+    }
+    if (event.key === 'Escape') { menu.hidden = true; if (open) minimize(); else launcher.focus(); }
+  });
   shadow.addEventListener('click', async event => {
     if (!event.isTrusted) return;
     const action = event.target.dataset.action;
-    if (action === 'tab') {
-      const result = await chrome.runtime.sendMessage({ type: 'companion-tab' });
-      if (result?.error) { shadow.querySelector('.fallback p').textContent = 'Accanto could not open a tab. Try again using the toolbar icon.'; shadow.querySelector('.fallback').hidden = false; }
-      else minimize();
-      menu.hidden = true;
-    }
+    if (action === 'tab') await openTab();
     if (action === 'hide') {
       const { companionHiddenSites = [] } = await chrome.storage.local.get('companionHiddenSites');
       await chrome.storage.local.set({ companionHiddenSites: [...new Set([...companionHiddenSites, origin])] });
@@ -138,28 +165,6 @@
     const moves = { ArrowLeft: [16, 0], ArrowRight: [-16, 0], ArrowUp: [0, 16], ArrowDown: [0, -16] };
     const delta = moves[event.key];
     if (delta) { event.preventDefault(); place(parseFloat(host.style.right) + delta[0], parseFloat(host.style.bottom) + delta[1]); }
-  });
-  resizer.addEventListener('pointerdown', event => {
-    if (event.button !== 0 || resizing) return;
-    event.preventDefault();
-    resizer.focus({ preventScroll: true });
-    const box = card.getBoundingClientRect();
-    resizing = { id: event.pointerId, x: event.clientX, y: event.clientY, width: box.width, height: box.height, left: box.left, top: box.top };
-    resizer.setPointerCapture(event.pointerId);
-  });
-  resizer.addEventListener('pointermove', event => {
-    if (resizing?.id === event.pointerId) resize(resizing.width + event.clientX - resizing.x, resizing.height + event.clientY - resizing.y, resizing.left, resizing.top);
-  });
-  resizer.addEventListener('lostpointercapture', () => { resizing = undefined; });
-  resizer.addEventListener('pointerup', event => { if (resizing?.id === event.pointerId) resizer.releasePointerCapture(event.pointerId); });
-  resizer.addEventListener('keydown', event => {
-    const moves = { ArrowLeft: [-16, 0], ArrowRight: [16, 0], ArrowUp: [0, -16], ArrowDown: [0, 16] };
-    const delta = moves[event.key];
-    if (delta) {
-      event.preventDefault();
-      const box = card.getBoundingClientRect();
-      resize(box.width + delta[0], box.height + delta[1], box.left, box.top);
-    }
   });
   void chrome.storage.local.get('companionHiddenSites').then(({ companionHiddenSites = [] }) => {
     if (companionHiddenSites.includes(origin)) remove();

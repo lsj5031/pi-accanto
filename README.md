@@ -126,16 +126,23 @@ friendly eye change, then click to open. Reduced-motion preferences are respecte
 | Want to… | Here's how |
 | --- | --- |
 | Open Accanto from the keyboard | Press **Alt + Shift + Q** (**Option + Shift + Q** on Mac). |
-| See keyboard shortcuts | Click **?** in the header. **Customize in Chrome** lets you change the opening shortcut. |
+| See keyboard shortcuts | Click **?** in the header to see Chrome's actual assignments. **Customize in Chrome** lets you change any of them. |
 | Put it away | Click **−** or press **Escape**. A running reply continues while minimized. |
-| Move or resize it | Drag the small grip at the top, or resize from the bottom-right corner. |
+| Move it | Drag the small grip at the top. |
+| Make room for a longer chat | Click the expand icon or press **Alt + Shift + D** to enlarge. Press again to restore the previous size and position. |
 | Start fresh or return to a chat | Open **History** in the header. Choose **New chat** or a saved conversation. |
 | Ask without reading this page | Open the page-context chip and choose **Web only**. |
-| Keep working while you navigate | Choose **History → Open in a tab** before starting the reply. Keep that assistant tab open. |
+| Keep working while you navigate | Press **Alt + Shift + S** or choose **History → Open in a tab** before starting the reply. The conversation and its page context move together. Keep that assistant tab open. |
 | Hide the companion on a website | Right-click the small companion and choose **Hide on this site**. The toolbar can bring it back. |
 
-Chrome may keep an older shortcut when you update the extension. Check or change
-it at `chrome://extensions/shortcuts`; the help dialog shows your current assignment.
+These three Chrome-managed shortcuts work while browsing, including when focus is
+outside Accanto. On Mac, use **Option** for **Alt**. Chrome may keep older assignments
+after an update or leave a shortcut unassigned when another extension uses it.
+The help dialog shows this; check or change any shortcut at `chrome://extensions/shortcuts`.
+
+Opening Accanto from Chrome's New Tab page starts a chat with **no tab attached**.
+You can ask a question or search the web immediately, without trying to read an
+empty browser-internal page. Opening an existing chat in a tab keeps its attachment.
 
 ![The compact history menu, with a current-chat checkmark and a separate Open in a tab action](docs/screenshots/companion-history.png)
 
