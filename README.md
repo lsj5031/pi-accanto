@@ -43,16 +43,33 @@ Text replacements stay in the field for you to review. Accanto never clicks Subm
 
 ## Get started
 
-You'll need **Chrome**, **Node.js 22 or later** to build the extension, and an
+You'll need **Chrome** and an
 **AI provider's API key**. OpenAI, Anthropic, Google Gemini and OpenAI-compatible
 servers are supported. Your provider may charge for use; a chat subscription
 doesn't include an API key.
 
-This is an early release installed from source. There is no Chrome Web Store
-installer yet. Node is only needed to build it; no separate server or CLI runs
-while you use Accanto.
+This is an early release installed as an unpacked extension. There is no Chrome
+Web Store installer yet. Use a ready-built download when available, or build
+from source with **Node.js 22 or later**. No separate server or CLI runs while
+you use Accanto.
 
 ### 1. Install in Chrome
+
+**Ready-built download (no Node.js required):**
+
+1. Open [Build and fixture tests](https://github.com/lsj5031/pi-accanto/actions/workflows/ci.yml)
+   and choose a successful run on **main**. Download its **extension-download**
+   artifact (GitHub sign-in is required; artifacts expire).
+2. Extract the artifact, then extract the **`pi-accanto-VERSION.zip`** inside it
+   into a permanent folder.
+3. Open `chrome://extensions`, enable **Developer mode**, choose **Load unpacked**,
+   and select the extracted folder containing **`manifest.json`**.
+4. Open a normal webpage and click Pi Accanto in Chrome's extensions menu.
+
+GitHub's **Source code (zip)** downloads are not ready-built extensions.
+If no build artifact is available, use the source build below.
+
+**Build from source:**
 
 1. [Download the source ZIP](https://github.com/lsj5031/pi-accanto/archive/refs/heads/main.zip)
    and extract it, or clone this repository.
@@ -68,9 +85,25 @@ while you use Accanto.
 5. Open a normal webpage, then click Pi Accanto in Chrome's extensions menu.
    Pin it to the toolbar if you'd like.
 
-Keep the project folder where it is. To update, download or pull the latest source,
-run the build again, reload the extension at `chrome://extensions`, and refresh
-your webpages.
+Select **dist**, not the project folder. Loading the source folder shows build
+instructions rather than starting the assistant.
+
+Keep the installed folder where it is. To update a download, extract the new
+extension ZIP into that same folder. For source installs, pull the latest source
+and rebuild. Then reload the extension at `chrome://extensions` and refresh your
+webpages.
+
+**Stable extension identity:** builds use the ID
+`iojliefpiallbakabkahmiaadgmlfjkf`, regardless of their installation folder.
+If your API gateway restricts browser origins, allow
+`chrome-extension://iojliefpiallbakabkahmiaadgmlfjkf` explicitly. This does not
+grant website access or bypass the gateway's authentication.
+
+**Upgrading an older, path-based install:** the new ID is a separate extension
+identity. Before removing the old copy, preserve any chat history you need and
+make sure you can re-enter your API keys. Load the new build, reconnect your model
+and approve website access again, then remove the old copy. Chrome does not
+automatically migrate its chats, keys or permissions to the new ID.
 
 ### 2. Connect your AI model
 

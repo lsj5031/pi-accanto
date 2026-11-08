@@ -212,7 +212,8 @@ try {
   await a.getByRole('dialog', { name: 'Keyboard shortcuts' }).waitFor();
   await a.getByRole('button', { name: 'Close keyboard shortcuts' }).waitFor();
   assert.equal(await a.getByText('Move / resize', { exact: true }).count(), 0);
-  await a.waitForFunction(() => document.getElementById('tab-shortcut').textContent === 'Alt+Shift+S');
+  const tabShortcut = await worker.evaluate(async () => (await chrome.commands.getAll()).find(command => command.name === 'open-chat-tab')?.shortcut || 'Not assigned');
+  await a.waitForFunction(expected => document.getElementById('tab-shortcut').textContent === expected, tabShortcut);
   assert.equal(await a.locator('#enlarge-key').textContent(), 'Not assigned', 'Help must reflect unavailable Chrome assignments instead of advertising a default');
   await page.screenshot({ path: resolve(artifacts, 'shortcuts.png') });
   await page.keyboard.press('Escape');

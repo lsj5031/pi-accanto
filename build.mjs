@@ -4,7 +4,9 @@ import { mkdir, copyFile, cp, writeFile, readFile, readdir, rm } from 'node:fs/p
 await mkdir('dist', { recursive: true });
 const result = await build({
   entryPoints: ['panel.js'], bundle: true, format: 'esm', platform: 'browser',
-  outfile: 'dist/panel.js', metafile: true, minify: false,
+  // Extension pages have no Node/Bun process. Drop upstream Node-only fallbacks.
+  define: { process: 'undefined' },
+  outfile: 'dist/panel.js', metafile: true, minify: false, minifySyntax: true,
 });
 const worker = await build({
   entryPoints: ['codemode-worker.js'], bundle: true, format: 'esm', platform: 'browser',
@@ -13,9 +15,13 @@ const worker = await build({
 await copyFile('node_modules/quickjs-wasi/quickjs.wasm', 'dist/quickjs.wasm');
 await copyFile('node_modules/quickjs-wasi/LICENSE', 'dist/QUICKJS-WASI-LICENSE');
 await copyFile('node_modules/basecoat-css/dist/basecoat.cdn.min.css', 'dist/basecoat.css');
-for (const file of ['manifest.json', 'panel.html', 'panel.css', 'background.js', 'companion-host.js', 'companion-bridge.js']) {
+for (const file of ['panel.html', 'panel.css', 'background.js', 'companion-host.js', 'companion-bridge.js']) {
   await copyFile(file, `dist/${file}`);
 }
+const manifest = JSON.parse(await readFile('manifest.json', 'utf8'));
+// Only the source checkout shows build instructions; the bundle uses onClicked.
+delete manifest.action.default_popup;
+await writeFile('dist/manifest.json', `${JSON.stringify(manifest, null, 2)}\n`);
 await writeFile('dist/companion.html', (await readFile('panel.html', 'utf8')).replace('src="panel.js"', 'src="companion-bridge.js"'));
 await rm('dist/assets', { recursive: true, force: true });
 await cp('assets', 'dist/assets', { recursive: true });
@@ -24,7 +30,10 @@ for (const directory of ['cmaps', 'standard_fonts']) {
   await cp(`node_modules/pdfjs-dist/${directory}`, `dist/${directory}`, { recursive: true });
 }
 await copyFile('node_modules/pdfjs-dist/LICENSE', 'dist/PDFJS-LICENSE');
-await writeFile('dist/bundle-meta.json', JSON.stringify(result.metafile, null, 2));
+await writeFile('dist/bundle-meta.json', JSON.stringify({
+  inputs: { ...result.metafile.inputs, ...worker.metafile.inputs },
+  outputs: { ...result.metafile.outputs, ...worker.metafile.outputs },
+}, null, 2));
 await rm('dist/third-party', { recursive: true, force: true });
 const packages = new Set(Object.keys({ ...result.metafile.inputs, ...worker.metafile.inputs })
   .map(input => input.match(/^(.*node_modules\/(?:@[^/]+\/)?[^/]+)(?:\/|$)/)?.[1]).filter(Boolean));

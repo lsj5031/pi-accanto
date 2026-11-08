@@ -29,6 +29,34 @@ path for a different Chromium build; CI uses the Playwright-pinned version inste
 Artifacts default to ignored `test-results/`; `ACCANTO_ARTIFACT_DIR` overrides
 the output root. Read [PRIVACY.md](PRIVACY.md) before sharing test reports.
 
+## Build an installable download
+
+Run `npm run package` to rebuild and create `artifacts/pi-accanto-VERSION.zip`.
+The ZIP contains `manifest.json` at its root, bundled scripts, runtime assets and
+license notices. Packaging uses `zip` on macOS/Linux or PowerShell's
+`Compress-Archive` on Windows. Run `npm run test:distribution` to check packaging
+and extract/verify the actual download. Without a packaged build, that last
+check is explicitly skipped.
+
+Successful CI runs upload the ZIP as the **extension-download** artifact after
+fixture checks pass. Download and extract both the artifact wrapper and the
+extension ZIP before using Chrome's **Load unpacked**. The source manifest opens
+build instructions; the build removes that popup so the toolbar opens Accanto.
+This workflow does not publish a GitHub release or a Chrome Web Store listing.
+
+The manifest's `key` is a public RSA key that pins the unpacked extension ID to
+`iojliefpiallbakabkahmiaadgmlfjkf`. Preserve it across builds and releases.
+No private signing key is stored or needed for unpacked installs. Changing the
+public key creates a new extension identity, storage namespace and gateway origin.
+`npm run test:identity` loads the real build from two different paths in disposable
+Chrome profiles and checks that both IDs match. Build first; browser selection
+uses the same `ACCANTO_CHROME_EXECUTABLE` override as the other browser fixtures.
+
+`npm run test:permissions` checks the production all-site permission handler's
+pending, denial, retry and removal feedback with controlled Chrome API responses.
+It does not verify the native permission dialog. Native acceptance/denial still
+needs a visible browser and a fresh profile without pre-granted website access.
+
 ## Opt-in integration checks
 
 `npm run test:research:live` adds real provider requests and live-model scenarios.

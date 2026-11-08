@@ -1,5 +1,6 @@
 {
   "manifest_version": 3,
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAyVR4X25Gv9WC/s0txgH1h22o4fh4JzZRuT3a0ycspDkfI+Pt/0qB28kRkVakWm1/tNjU58vryu7J1sDO3IRDme5ndfgmBbXXGH495cG9QtZNV6xsUDjiTCdNsD4zcHTnm6mCPfinlzA7Mk8MkhR0qe3YiM/YuCBFTtPMx/zZLbSM6xs3dMao8wuQMOfObQoM2OgkOYrl3loaj/+H+UXDf6CnFzCO7vUW6fKU7z9w9i6dyBiGdiHSOUjN4U30K3nHhgdx52r0eVdmt5B6WMKTRZ5e1UNDD4Iiy+pwijnsKpmoh6GECifzf61ATgjk257X0P9Lf6IHl0IrsB4JeNKDqwIDAQAB",
   "name": "Pi Accanto",
   "version": "0.2.0",
   "description": "An assistant beside your browser tab, with page and PDF reading, web research, and sandboxed Code Mode.",
@@ -9,6 +10,7 @@
   "icons": { "16": "assets/icon-16.png", "32": "assets/icon-32.png", "48": "assets/icon-48.png", "128": "assets/icon-128.png" },
   "action": {
     "default_title": "Open Pi Accanto",
+    "default_popup": "source-setup.html",
     "default_icon": { "16": "assets/icon-16.png", "32": "assets/icon-32.png" }
   },
   "commands": {

@@ -659,16 +659,24 @@ async function start() {
   $('remember-model-key').checked = credential.remember;
   $('forget-model-key').hidden = !credential.apiKey;
   let allSitesAllowed = false;
-  const showAccess = async () => {
+  let accessPending = false;
+  const showAccess = async (updateStatus = !accessPending) => {
     allSitesAllowed = await chrome.permissions.contains({ origins: allSiteOrigins });
     $('all-sites').textContent = allSitesAllowed ? 'Remove all-site access' : 'Allow all websites';
-    $('access-status').textContent = allSitesAllowed
-      ? 'All websites allowed. Removing this may require allowing individual sites again.'
-      : 'Site-by-site access. Chrome remembers each site you allow.';
+    if (updateStatus && !accessPending) {
+      $('access-status').textContent = allSitesAllowed
+        ? 'All websites allowed. Removing this may require allowing individual sites again.'
+        : 'Site-by-site access. Chrome remembers each site you allow.';
+    }
   };
   await showAccess();
   $('all-sites').addEventListener('click', async () => {
+    if (accessPending) return;
+    accessPending = true;
     $('all-sites').disabled = true;
+    $('access-status').textContent = allSitesAllowed
+      ? 'Removing all-site access…'
+      : 'Confirm website access in Chrome’s permission dialog.';
     try {
       // Keep the permission request in the original click's user gesture.
       if (allSitesAllowed) {
@@ -680,10 +688,11 @@ async function start() {
         $('access-status').textContent = 'Confirm model and search service access in Chrome to keep them connected.';
         if (!await chrome.permissions.request({ origins: [...new Set(services)] })) throw new Error('Website access removed. Reconnect your model and save your search provider to restore service access.');
       } else if (!await chrome.permissions.request({ origins: allSiteOrigins })) throw new Error('All-site access declined. You can still allow individual sites.');
+      accessPending = false;
       await showAccess();
       await showAttachment();
     } catch (error) { $('access-status').textContent = error.message; }
-    finally { $('all-sites').disabled = false; }
+    finally { accessPending = false; $('all-sites').disabled = false; }
   });
   const accessChanged = () => { void showAccess(); void showAttachment(); };
   chrome.permissions.onAdded.addListener(accessChanged);

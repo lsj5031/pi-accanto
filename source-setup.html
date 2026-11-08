@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Accanto needs a build</title>
+  <style>
+    body { width: 340px; margin: 0; padding: 24px; box-sizing: border-box; font: 14px/1.5 system-ui, sans-serif; color: #32442d; background: #fcfdf8; }
+    h1 { font-size: 20px; margin-top: 0; }
+    pre { padding: 12px; background: #eef3e6; border-radius: 8px; }
+    code { overflow-wrap: anywhere; }
+  </style>
+</head>
+<body>
+  <h1>This is the source folder</h1>
+  <p>Accanto needs bundled dependencies before it can run. In the project folder, use Node.js 22 or later and run:</p>
+  <pre><code>npm ci
+npm run build</code></pre>
+  <p>Then remove this source copy at <code>chrome://extensions</code>, choose <strong>Load unpacked</strong>, and select the generated <strong>dist</strong> folder instead.</p>
+  <p>For a ready-built download, extract <strong>pi-accanto-VERSION.zip</strong> from a successful build's <strong>extension-download</strong> artifact, then load the folder containing <code>manifest.json</code>. GitHub's “Source code” ZIP is not an installable extension.</p>
+</body>
+</html>
