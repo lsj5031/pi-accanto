@@ -17,6 +17,7 @@
     "package": "npm run build && node package-extension.mjs",
     "test:distribution": "node --test test-distribution.mjs",
     "test:permissions": "node --test test-permissions.mjs",
+    "test:panel-state": "node --test test-panel-state.mjs",
     "test:identity": "node --test test-identity.mjs",
     "test": "node test.mjs",
     "test:pdf": "node test-pdf.mjs",

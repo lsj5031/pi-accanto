@@ -12,9 +12,10 @@
     <h1><span class="buddy" aria-hidden="true"></span>Accanto</h1>
     <div class="header-actions">
     <details id="history-menu">
-      <summary class="icon-button" aria-label="Conversation history" title="History and new chat"><svg viewBox="0 0 20 20"><path d="M3 9a7 7 0 1 1 2 6M3 3v6h6M10 6v4l3 2"/></svg></summary>
+      <summary class="icon-button" aria-label="Conversation history" title="History and reset chat"><svg viewBox="0 0 20 20"><path d="M3 9a7 7 0 1 1 2 6M3 3v6h6M10 6v4l3 2"/></svg></summary>
       <section id="conversation-bar" class="popover" aria-label="Conversations">
-        <div class="history-heading"><h2>Your chats</h2><button type="button" id="new-conversation" disabled><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 4v12M4 10h12"/></svg>New chat</button></div>
+        <div class="history-heading"><h2>Your chats</h2><button type="button" id="new-conversation" aria-describedby="reset-help" disabled><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 4v12M4 10h12"/></svg>Reset chat</button></div>
+        <p id="reset-help" class="context-hint">Start fresh in this saved chat. This does not create a new history entry.</p>
         <div class="history-list"><fieldset id="conversation" aria-label="Saved conversations"></fieldset></div>
         <button type="button" id="open-conversation" title="Move this conversation to a browser tab before starting a reply">Open in a tab<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M7 4H4v12h12v-3M10 4h6v6M16 4l-7 7"/></svg></button>
       </section>
@@ -114,7 +115,7 @@
   <section id="search-fallback" class="research-settings" aria-label="Search unavailable" hidden>
     <p id="search-failure" role="status"></p>
     <a id="open-search" target="_blank" rel="noopener noreferrer">Open search in browser ↗</a>
-    <p>Opens a new tab without attaching it. On a page you choose, select New chat, then Allow this site if offered. Your next message starts on that page.</p>
+    <p>Opens a new tab without attaching it. On a page you choose, use the page-context menu’s Use this page action, then Allow this site if offered.</p>
   </section>
   <details id="sources" class="research-settings" hidden>
     <summary>Web sources <span id="source-count"></span></summary>
@@ -140,13 +141,14 @@
       <div class="compose-box">
         <details id="context-menu">
           <summary class="context-chip"><svg viewBox="0 0 20 20"><rect x="4" y="3" width="12" height="14" rx="2"/><path d="M7 7h6M7 10h6M7 13h4"/></svg><span id="target">This page</span><svg class="context-chevron" viewBox="0 0 20 20" aria-hidden="true"><path d="m6 8 4 4 4-4"/></svg></summary>
-          <div class="popover"><p id="target-hint" class="context-hint">Send a message to start</p><button type="button" id="web-conversation" disabled>Web only · No page attached</button></div>
+          <div class="popover"><p id="target-hint" class="context-hint">Send a message to start</p><button type="button" id="page-conversation" disabled>Use this page</button><button type="button" id="web-conversation" disabled>Web only · No page attached</button></div>
         </details>
         <label for="prompt" id="composer-target" class="sr-only">Ask about this page</label>
         <div class="compose-bottom"><textarea id="prompt" rows="1" placeholder="Ask about this page…" required aria-describedby="help"></textarea>
         <div class="buttons"><button id="send" class="btn" disabled>Send</button><button type="button" id="stop" disabled>Stop</button></div></div>
       </div>
     </form>
+    <p id="navigation-warning" hidden>Reloading or leaving this page stops replies. Minimizing keeps them running. <button type="button" id="open-persistent-chat" disabled>Open in a tab before sending</button></p>
     <p id="help" class="sr-only">Page content goes to your chosen model. Ctrl or Command + Enter to send.</p>
   </footer>
   <dialog id="keyboard-shortcuts" aria-labelledby="shortcuts-title">

@@ -72,7 +72,7 @@ try {
     await panel.waitForFunction(async () => (await chrome.tabs.query({ active: true, currentWindow: true }))[0]?.status === 'complete');
     await panel.locator('#new-conversation').evaluate(button => button.click());
     await panel.waitForFunction(() => !document.getElementById('new-conversation').disabled);
-    assert.match(await panel.locator('#status').textContent(), /New conversation/);
+    assert.match(await panel.locator('#status').textContent(), /Chat reset/);
   }
   const result = () => panel.locator('article.toolResult').last().textContent();
   await fixture.bringToFront();

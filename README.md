@@ -115,8 +115,9 @@ Accept Chrome's request to access that provider if prompted.
 
 Choose your provider's native format when available. The base URL fills in for
 OpenAI Responses, Anthropic and Gemini; custom servers need their own URL.
-A green **Connected** confirmation means your settings and model-catalog check
-succeeded. It doesn't send a chat message or guarantee future service availability.
+**Model configured** means your settings were saved after a model-catalog check.
+It does not test chat access. A successful reply verifies chat access in that
+panel; a gateway can allow the catalog but reject chat requests.
 
 <details>
 <summary>Which model format and URL should I use?</summary>
@@ -168,8 +169,8 @@ friendly eye change, then click to open. Reduced-motion preferences are respecte
 | Put it away | Click **−** or press **Escape**. A running reply continues while minimized. |
 | Move it | Drag the small grip at the top. |
 | Make room for a longer chat | Click the expand icon or press **Alt + Shift + D** to enlarge. Press again to restore the previous size and position. |
-| Start fresh or return to a chat | Open **History** in the header. Choose **New chat** or a saved conversation. |
-| Ask without reading this page | Open the page-context chip and choose **Web only**. |
+| Start fresh or return to a chat | Open **History** in the header. **Reset chat** starts fresh in the same saved chat, without adding a history entry. Or choose another saved conversation. |
+| Change page context | Open the page-context chip and choose **Web only** or **Use this page**. Your unsent draft is kept. |
 | Keep working while you navigate | Press **Alt + Shift + S** or choose **History → Open in a tab** before starting the reply. The conversation and its page context move together. Keep that assistant tab open. |
 | Hide the companion on a website | Right-click the small companion and choose **Hide on this site**. The toolbar can bring it back. |
 
@@ -186,11 +187,14 @@ empty browser-internal page. Opening an existing chat in a tab keeps its attachm
 
 Long chat lists scroll inside the menu. The input grows with your draft and clears
 as soon as you send, so you can start typing the next question.
+Unsent drafts are kept per conversation for the current browser session, including
+when model settings cause a panel reload or a chat moves to another panel.
 
 Each website tab has its own conversation and can work concurrently. Navigating
 or reloading a webpage closes its agent; saved history returns, but an interrupted
 reply doesn't automatically resume. Use **Open in a tab** for work that needs to
-survive navigation. After a browser restart, reattach the page explicitly.
+survive navigation. This action is also shown below the embedded composer before
+sending. After a browser restart, reattach the page explicitly.
 
 PDFs and pages that can't host the floating companion open a separate assistant
 tab. Local PDFs need **Allow access to file URLs** in the extension's Chrome
@@ -248,7 +252,7 @@ npx --yes http-server docs/examples -a 127.0.0.1 -p 8123
 ```
 
 Open `http://127.0.0.1:8123/code-mode-invoice.html`, allow the site in Accanto,
-start a **New chat**, and ask:
+choose **Reset chat**, and ask:
 
 > Use Code Mode to read the quantity, unit price and delivery charge. Calculate
 > the total, cite this page and show your working.

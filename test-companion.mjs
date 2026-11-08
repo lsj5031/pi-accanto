@@ -187,17 +187,51 @@ try {
   assert.equal(await settings.locator('#connect').textContent(), 'Connect');
   await settings.locator('#connect').click();
   await settings.waitForFunction(() => document.getElementById('connection-status').textContent.includes('Key remembered on this device'));
-  assert.equal(await settings.locator('#connection-status').getAttribute('data-state'), 'connected');
-  assert.match(await settings.locator('#connection-status').textContent(), /Connected to companion-fixture/);
+  assert.equal(await settings.locator('#connection-status').getAttribute('data-state'), 'configured');
+  assert.match(await settings.locator('#connection-status').textContent(), /Model configured: companion-fixture/);
+  assert.match(await settings.locator('#connection-status').textContent(), /model catalog only, not chat access/);
   assert.equal(await settings.locator('#connect').textContent(), 'Reconnect');
   await ready(a);
+  assert.equal(await a.locator('#navigation-warning').isVisible(), true);
+  assert.equal(await a.locator('#open-persistent-chat').isEnabled(), true);
   assert.equal(await worker.evaluate(origin => chrome.permissions.contains({ origins: [`${origin}/*`] }), modelOrigin), true);
   await settings.screenshot({ path: resolve(artifacts, 'settings.png') });
   await settings.locator('#model-id').fill('edited-model');
   assert.equal(await settings.locator('#connection-status').getAttribute('data-state'), 'draft');
   await settings.screenshot({ path: resolve(artifacts, 'settings-unsaved.png') });
   await settings.reload();
-  await settings.waitForFunction(() => document.getElementById('connection-status')?.dataset.state === 'connected');
+  await settings.waitForFunction(() => document.getElementById('connection-status')?.dataset.state === 'configured');
+  await a.locator('#prompt').fill('Keep this unsent draft while reconnecting');
+  await settings.locator('#api-key').fill('companion-fixture-key-reconnected');
+  await Promise.all([settings.waitForEvent('load'), settings.locator('#connect').click()]);
+  await ready(a);
+  assert.equal(await a.locator('#prompt').inputValue(), 'Keep this unsent draft while reconnecting', 'Model changes must preserve idle composer drafts');
+  await a.locator('#prompt').fill('');
+  await page.bringToFront();
+  await fitWindow(page);
+  const requestsBeforeStop = modelRequests.length;
+  await a.evaluate(() => {
+    const execute = chrome.scripting.executeScript.bind(chrome.scripting);
+    chrome.scripting.executeScript = async options => {
+      if (document.body.dataset.busy === 'true') {
+        chrome.scripting.executeScript = execute;
+        window.preparationPaused = true;
+        await new Promise(resolve => { window.releasePreparation = resolve; });
+      }
+      return execute(options);
+    };
+  });
+  await send(a, 'Do not send this request after Stop');
+  await a.waitForFunction(() => window.preparationPaused === true);
+  await a.locator('#stop').click();
+  assert.match(await a.locator('#status').textContent(), /Stopping/);
+  await a.evaluate(() => window.releasePreparation());
+  await idle(a);
+  assert.match(await a.locator('#status').textContent(), /Stopped/);
+  assert.equal(modelRequests.length, requestsBeforeStop, 'Stop during real page preparation must prevent all model requests');
+  assert.equal(await a.locator('#prompt').inputValue(), 'Do not send this request after Stop');
+  await a.locator('#prompt').fill('');
+  await settings.bringToFront();
   await settings.locator('#research-settings > summary').click();
   await settings.locator('#search-provider').selectOption('tinyfish');
   assert.equal(await settings.locator('#tinyfish-key').inputValue(), '');
@@ -319,6 +353,7 @@ try {
   await idle(a);
   assert.match(await a.locator('article.toolResult').last().textContent(), /90\.75/);
   assert.match(await a.locator('article.assistant .message-body').last().textContent(), /90\.75/);
+  assert.equal(await a.locator('#connection-status').getAttribute('data-state'), 'verified', 'Only a successful model reply verifies chat access');
   assert.equal(await a.locator('.turn-activity').count(), 1);
   assert.equal(await a.locator('.turn-activity').evaluate(element => element.open), false);
   await page.screenshot({ path: resolve(artifacts, 'answer.png') });
@@ -337,6 +372,40 @@ try {
   await page.screenshot({ path: resolve(artifacts, 'script.png') });
   await a.locator('article.toolResult pre').scrollIntoViewIfNeeded();
   await page.screenshot({ path: resolve(artifacts, 'activity.png') });
+  const chatBeforeContextSwitch = new URL(a.url()).searchParams.get('conversation');
+  await a.locator('#prompt').fill('Keep this draft when switching page context');
+  await a.locator('#context-menu > summary').click();
+  await a.locator('#web-conversation').click();
+  await idle(a);
+  assert.equal(await a.locator('#target').textContent(), 'Web research');
+  await a.locator('#context-menu > summary').click();
+  await a.locator('#page-conversation').click();
+  await idle(a);
+  assert.equal(await a.locator('#target').getAttribute('title'), `${origin}/invoice`);
+  assert.equal(await a.locator('#prompt').inputValue(), 'Keep this draft when switching page context');
+  assert.equal(new URL(a.url()).searchParams.get('conversation'), chatBeforeContextSwitch);
+  assert.equal(await a.locator('#new-conversation').textContent(), 'Reset chat');
+  assert.match(await a.locator('#reset-help').textContent(), /does not create a new history entry/);
+  await a.locator('#prompt').fill('');
+  const contrast = await a.evaluate(() => {
+    const luminance = color => {
+      const channels = color.match(/[\d.]+/g).slice(0, 3).map(Number).map(n => n / 255)
+        .map(n => n <= .04045 ? n / 12.92 : ((n + .055) / 1.055) ** 2.4);
+      return channels[0] * .2126 + channels[1] * .7152 + channels[2] * .0722;
+    };
+    return ['#status', '.context-chip', '#target-hint', '#navigation-warning'].map(selector => {
+      const element = document.querySelector(selector);
+      const style = getComputedStyle(element);
+      let background = element;
+      while (getComputedStyle(background).backgroundColor === 'rgba(0, 0, 0, 0)' && background.parentElement) background = background.parentElement;
+      const values = [luminance(style.color), luminance(getComputedStyle(background).backgroundColor)].sort((x, y) => y - x);
+      return { selector, ratio: (values[0] + .05) / (values[1] + .05), font: parseFloat(style.fontSize) };
+    });
+  });
+  for (const item of contrast) {
+    assert.ok(item.ratio >= 4.5, `${item.selector} contrast must reach 4.5:1: ${JSON.stringify(item)}`);
+    assert.ok(item.font >= 12, `${item.selector} should be at least 12px`);
+  }
   // A hostile page may embed the public URL but cannot initialize an agent,
   // select another tab, request history, or control the legitimate frame.
   const rogueLoaded = page.waitForEvent('framenavigated', { predicate: frame => frame !== a && frame.url().startsWith(base) });
@@ -499,6 +568,33 @@ try {
   await other.screenshot({ path: resolve(artifacts, 'sources.png') });
   assert.equal(await b.locator('#source-list button').count(), 0, 'A website with Chrome access must not ask for source approval');
   await b.locator('#sources > summary').click();
+  await page.bringToFront();
+  await send(a, 'Code: await tools.web_search({query:"hold-draft"}); text(load("marker"));');
+  const draftDeadline = Date.now() + 10000;
+  while (!pending.has('hold-draft')) { assert.ok(Date.now() < draftDeadline); await new Promise(done => setTimeout(done, 20)); }
+  await a.locator('#prompt').fill('A follow-up typed while the current reply is running');
+  const reloadedAfterReply = page.waitForEvent('framenavigated', { predicate: frame => frame === a });
+  await worker.evaluate(() => chrome.storage.local.set({ apiKey: 'companion-fixture-key-while-busy' }));
+  assert.equal(await a.locator('#stop').isEnabled(), true, 'Model changes must defer reload until the current reply ends');
+  pending.get('hold-draft')();
+  await reloadedAfterReply;
+  await ready(a);
+  assert.equal(await a.locator('#prompt').inputValue(), 'A follow-up typed while the current reply is running', 'Deferred reload must preserve the next draft');
+  assert.notEqual(await b.locator('#prompt').inputValue(), 'A follow-up typed while the current reply is running', 'Drafts must be isolated by conversation');
+  await a.locator('#prompt').fill('');
+  await other.bringToFront();
+  await b.locator('#prompt').fill('Carry this unsent draft into a standalone tab');
+  const draftTabOpened = browser.waitForEvent('page');
+  await b.locator('#open-persistent-chat').click();
+  const draftTab = await draftTabOpened;
+  await ready(draftTab);
+  assert.equal(await draftTab.locator('#prompt').inputValue(), 'Carry this unsent draft into a standalone tab');
+  assert.equal(await draftTab.locator('#navigation-warning').isVisible(), false, 'Standalone agents survive source-page navigation');
+  await draftTab.close();
+  await other.bringToFront();
+  await b.locator('#continue-here').click();
+  await ready(b);
+  await b.locator('#prompt').fill('');
   await page.bringToFront();
   await a.locator('#minimize').click();
   box = await page.locator('[data-accanto-companion]').boundingBox();

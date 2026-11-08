@@ -206,7 +206,7 @@ try {
     await panel.locator('#stop').evaluate((button) => button.click());
     await panel.waitForFunction(() => !document.getElementById('send')?.disabled, null, { timeout: 15000 });
     report.cancelStatus = await panel.locator('#status').innerText();
-    assert.match(report.cancelStatus, /aborted|cancel/i);
+    assert.match(report.cancelStatus, /Stopped/);
     report.recovery = await send('Reply with exactly: Ready for the next task. Do not use tools.');
     assert.match(report.recovery.answer, /Ready for the next task/);
     // Exercise the product's explicit conversation handoff to another agent tab.
@@ -289,7 +289,7 @@ try {
     assert.match(await panel.locator('#transcript').textContent(), /NZ-429/);
     await panel.screenshot({ path: resolve(artifacts, 'attachment-live-changed.png') });
     await panel.locator('#new-conversation').evaluate((button) => button.click());
-    await panel.waitForFunction(() => document.getElementById('status').textContent.includes('New conversation'));
+    await panel.waitForFunction(() => document.getElementById('status').textContent.includes('Chat reset'));
     assert.equal(await panel.locator('article').count(), 0);
     await panel.screenshot({ path: resolve(artifacts, 'attachment-live-new.png') });
     const freshStart = requests.length;
@@ -330,7 +330,7 @@ try {
     await panel.waitForFunction(async () => (await chrome.tabs.query({ active: true, currentWindow: true }))[0]?.status === 'complete');
     await panel.locator('#new-conversation').evaluate(button => button.click());
     await panel.waitForFunction(() => !document.getElementById('new-conversation').disabled);
-    assert.match(await panel.locator('#status').textContent(), /New conversation/);
+    assert.match(await panel.locator('#status').textContent(), /Chat reset/);
     const pdfRead = await send('Read this PDF using inspect_tab. Give the Harbour project code, total cost of both depots plus delivery, reference code and approval status. Cite physical PDF page numbers for the facts.');
     assert.match(pdfRead.answer, /H-731/);
     assert.match(pdfRead.answer, /165\.85/);

@@ -33,17 +33,23 @@ answers reliable or page content trustworthy.
   source excerpts, generated scripts and durable task state. These are persistent
   data, including content read from private pages. They are not encrypted by Pi
   Accanto. Browser-profile access and backups may expose them.
-- Model/search keys live in `chrome.storage.session` for the browser session.
-  They are not intentionally placed in chat history or persistent local storage.
+- Remembered model/search keys live in extension-local Chrome storage on this
+  device. With **Remember API key on this device** unchecked, keys instead live
+  in `chrome.storage.session` for the browser session. They are not intentionally
+  placed in chat history.
   Changing model endpoints or API formats requires an explicitly scoped credential. Never paste
   a key into chat: that would become conversation content.
 - Page attachments, browser-session identifiers and selected search settings are
   session state. Search-result eligibility and active sandbox state are task-scoped;
   Chrome host grants can persist until revoked and are reused for source reads.
+- Unsent composer drafts are stored per conversation in `chrome.storage.session`
+  so reloads and panel handoffs do not discard them. They remain on this device
+  for the current browser session and are not sent to the model until you send.
+  Clearing the composer or choosing **Reset chat** clears that conversation's draft.
 - Chrome permissions, browser history, downloads and clipboard contents are
   managed by the browser/OS. Copying an answer puts it on the system clipboard.
 
-Closing a tab/panel or choosing **New chat** does not erase saved history. Task
+Closing a tab/panel or choosing **Reset chat** does not erase saved history. Task
 boundaries limit model context; they are not data-deletion controls.
 
 The companion appears on granted HTTP(S) websites. Its idle button does not load

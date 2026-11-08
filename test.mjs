@@ -258,7 +258,7 @@ try {
   await internal.goto('chrome://version');
   await internal.bringToFront();
   await panel.locator('#new-conversation').evaluate((button) => button.click());
-  await panel.waitForFunction(() => document.getElementById('status').textContent.includes('New conversation'));
+  await panel.waitForFunction(() => document.getElementById('status').textContent.includes('Chat reset'));
   assert.equal(await panel.locator('article').count(), 0);
   assert.equal(await panel.locator('#tab-switch').isVisible(), false);
   await panel.reload();
@@ -416,7 +416,7 @@ try {
     await pending;
     await reopened.locator('#stop').evaluate(button => button.click());
     await reopened.waitForFunction(() => !document.getElementById('send').disabled);
-    assert.match(await reopened.locator('#status').textContent(), /aborted|cancel/i);
+    assert.match(await reopened.locator('#status').textContent(), /Stopped/);
     nativeSlow = false;
     await reopened.locator('#prompt').fill('Recover after Stop.');
     await reopened.locator('#send').evaluate(button => button.click());

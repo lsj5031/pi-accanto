@@ -57,6 +57,11 @@ pending, denial, retry and removal feedback with controlled Chrome API responses
 It does not verify the native permission dialog. Native acceptance/denial still
 needs a visible browser and a fresh profile without pre-granted website access.
 
+`npm run test:panel-state` exercises Stop during each asynchronous preparation
+stage and while submission is being queued. The companion fixtures additionally
+cover drafts across idle/deferred model-change reloads, two-way page-context
+switching, configuration versus chat verification, and rendered text contrast.
+
 ## Opt-in integration checks
 
 `npm run test:research:live` adds real provider requests and live-model scenarios.

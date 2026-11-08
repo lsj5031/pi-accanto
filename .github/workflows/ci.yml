@@ -22,6 +22,7 @@ jobs:
       - run: npm run package
       - run: npm run test:distribution
       - run: npm run test:permissions
+      - run: npm run test:panel-state
       - run: npm run test:identity
       - run: npm run test:fixtures
       - uses: actions/upload-artifact@v4
