@@ -12,10 +12,10 @@ to those services.
 | --- | --- | --- |
 | Connect a model | Your configured API server | A model-catalog request with that server's API key: `/models` for OpenAI formats, `/v1/models/{id}` for Anthropic, or `/models/{id}` for Gemini. No chat message is sent by this check. |
 | Send a page-chat message | Your configured API server | Your question, relevant task history, the attached page's title/URL and a fresh bounded HTML excerpt. |
-| Read/search a page or PDF | Your configured API server, when tool results enter the conversation | Extracted text, page references, URLs and requested field values. Tools exclude password inputs; explicit HTML inspection can include ordinary input/textarea values. |
+| Read/search a page or PDF | Your configured API server, when tool results enter the conversation | Extracted text, page references, URLs, requested PDF page images for vision, and requested field values. Tools exclude password inputs; explicit HTML inspection can include ordinary input/textarea values. |
 | Search the web | Exa by default, or your selected TinyFish/Brave service | The model's deliberate search query and the selected provider's key if applicable. The whole page is not automatically sent to the search service; review requests carefully because the model can include facts from the conversation in a query. |
 | Read a search result | The source website, then your model as a tool result | A direct request to an exact URL returned by search in the current task. Existing Chrome website permissions, including all-site access, allow reads without additional per-result approval. Missing host access requires a user-granted Chrome permission. Source reads omit cookies and reject redirects. Your IP and normal request metadata remain visible to the website. |
-| Read an online PDF | The document's server, then your model as extracted text | A direct PDF request that can use your browser's authentication/cookies. Local PDF extraction uses bundled PDF.js; extracted text can still be sent to your model. |
+| Read an online PDF | The document's server, then your model as text or requested page images | A direct PDF request that can use your browser's authentication/cookies. Extraction and rendering use bundled PDF.js locally. Native text is the default; explicit visual reads send at most two labeled page images, each ≤1600px per edge, 2 megapixels and 1,500,000 base64 bytes. No cloud OCR service is used. |
 | Attach files | This device initially; your model on subsequent requests | Original files are stored locally per conversation. Questions include selected-source metadata (names, kind, size, states), not every file. Read tools send bounded text/PDF excerpts or actual image bytes when requested. Existing conversation history can resend earlier excerpts/images. |
 | Choose an additional browser tab | This device initially; your model on subsequent requests | The picker lists local titles/URLs without reading page text. Only the explicitly chosen tab’s metadata enters the source catalog. Requested reads send bounded visible text and its URL, excluding fields/hidden content. Chrome host access is required. No attachment tool fetches arbitrary URLs. |
 | Open search in browser | Your browser and DuckDuckGo | The query in a new search tab's URL. That tab is not automatically attached to the conversation. |
@@ -32,7 +32,7 @@ answers reliable or page content trustworthy.
 - Chrome local storage holds model API format, endpoint/model ID and the conversation catalog.
   It also remembers which websites you hid the companion on.
 - Per-conversation IndexedDB stores chat messages, inspected content, tool results,
-  source excerpts, generated scripts and durable task state. These are persistent
+  source excerpts, requested PDF page images, generated scripts and durable task state. These are persistent
   data, including content read from private pages. They are not encrypted by Pi
   Accanto. Browser-profile access and backups may expose them.
 - A separate conversation-specific IndexedDB source store holds selected original

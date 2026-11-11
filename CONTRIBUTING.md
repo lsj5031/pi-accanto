@@ -71,6 +71,12 @@ No real keys, payments, profiles or external model/search calls are used.
 The companion suite also attaches/removes a long-named text file in the actual
 authenticated compact and enlarged iframe.
 
+`npm run test:pdf` also runs `test-pdf-visual.mjs`: real Chromium renders a mixed
+15-page raster/text/blank fixture, checks pixels and outbound main/file image
+bytes, bounds, text-only feedback, the Code Mode direct-call boundary, render
+cancellation/removal/ownership cleanup and the actual 30-second timeout. It
+does not claim live-model interpretation accuracy.
+
 Keep source records and binary lifetimes separate from the model transcript.
 `attachments.js` owns stable IDs, bounds, persistence and read cancellation;
 `attachments-ui.js` owns file/paste/drop/tab selection and accessible source

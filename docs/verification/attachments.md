@@ -5,6 +5,72 @@ Base: `d927ff0c9de5ee965069da5dd84112e6f06b0a02`; branch:
 `feat/conversation-attachments`. Primary checkout untouched. No publication by
 this agent; the user subsequently published the branch.
 
+## Scanned PDF fallback
+
+Follow-up on `3d3d286`, limited to PDF reading. Native extraction remains the
+default. Both main-page `inspect_tab` and attached-file `read_source` accept
+`visual:true`, physical `start_page`, and `page_count:1` or `2`. Each result
+combines native text/source metadata with a physical-page label before each
+actual image block. Per-page `textStatus`, `noTextPages` and `nextPage` keep a
+text-bearing cover from concealing later no-text pages. Missing native text
+does not establish that a page is scanned or blank. Pure scans import as Ready.
+
+Rendering is local, using the pinned PDF.js worker, fonts and CMaps. Its shipped
+compatibility build fixes the missing Map/WeakMap `getOrInsertComputed` methods
+observed in real Chromium rendering, without a dependency upgrade. Reads keep
+the existing validated main-PDF fetch path and 30-second deadline. Visual reads
+cap at two images, each 1600px per edge, 2 megapixels and 1,500,000 base64 bytes;
+oversized encodings are downscaled. Embedded PDF images above 16 megapixels
+may be omitted by PDF.js, explicitly disclosed in visual results. Small text,
+unsupported encodings and complex PDFs can still require a better original.
+
+The installed Code Mode `outcomeOf` converts schema-less results to text and
+omits images, despite the sandbox supporting `image()`. A `beforeTool` caller
+boundary now rejects nested visual/image reads with direct-model-call guidance;
+native text composition is unchanged. Tests prove the rejection and successful
+direct retry. Text-only models keep native text and receive honest
+switch-to-vision feedback, with no old or new image blocks sent by the adapter.
+
+**New coverage**, included in existing `test:pdf` / complete fixtures:
+`test-pdf-visual.mjs` generates a 15-page PDF containing a text cover, actual
+raster pages, a native caption plus diagram, and a blank final page. The raster
+has “SCAN 27, NORTH”, different colored rectangles and an asymmetric arrow.
+Checks cover all physical pages through incremental reads, independent pixel
+samples, standard-font cover glyphs, byte-identical outbound images through the
+production Chat Completions adapter for main/file reads, pure-scan import and
+reload, invalid/out-of-range options, pixel/encoded-byte limits, text-only
+model changes, Stop/signal/removal/ownership races and canvas cleanup. An
+intentionally stalled real renderer checks the actual 30-second timeout.
+These synthetic responses prove transport, not live-model reading accuracy.
+The final visual run took **38.37 seconds**, including that intentional wait:
+the high-entropy first read took **0.446 seconds**, yielding **1060×1060** and
+**810,520 base64 bytes** after downscaling. Timeout returned at **30.034 seconds**.
+The suite checks actual UI Stop and same-origin navigation during rendering,
+and made **19 local faux-adapter requests**.
+
+Local evidence: `test-results/pdf-visual/report.json`, `physical-page-2.jpg`
+and `compact-visual-result.png`. Copies of the
+[raster render](attachments/pdf-visual-page-2.jpg) and
+[compact screenshot](attachments/pdf-visual-compact.png) are retained here. Both were
+opened and inspected. No controls, spacing, permissions, credentials or external
+services were added. No mutation tool is available.
+
+Validation exposed a dense-text stream cleanup race. Text streams are now
+closed before rendering; exhausted budgets do not start another text stream,
+and cleanup waits for JS stream closure rather than PDF.js's sometimes absent
+worker cancellation acknowledgement. Cancelled reads force worker termination
+without waiting for that acknowledgement. New regressions cover a truncated
+final text chunk and text exhaustion followed by another rendered page, without
+misclassifying the later page as no-text.
+
+Final follow-up gates all passed: `package`, `test:distribution` (4),
+`test:permissions` (2), `test:panel-state` (5), `test:identity` (1), the complete
+`test:fixtures`, and `git diff --check`. Existing PDF/attachment assertions were
+updated for visual-read hints; the new visual suite runs inside `test:pdf`.
+An earlier release attempt stopped at the dense-text regression; after fixing
+it, the entire release sequence was rerun successfully. No live model calls or
+Windows native tests were run on Linux.
+
 ## Composer geometry follow-up
 
 Small visual correction on the same branch after `2470411`. The earlier visual
@@ -49,7 +115,7 @@ Validation for this follow-up only:
   Opening the picker reads local titles/URLs only. Choosing a tab requests only
   its origin's Chrome permission and captures document identity, not page text.
 - **Reading**: metadata catalog per question; `list_sources` / `read_source` work
-  directly and through Code Mode, without new write capabilities or URL fetching.
+  directly; native text reads also work through Code Mode, without new write capabilities or URL fetching.
   Text/tab reads cap at 12,000 characters; PDFs at 8 pages / 16,000 characters.
   Additional tabs reuse bounded visible-page extraction with fields excluded.
 - **Lifetime**: ready sources survive reload, model changes and ownership
@@ -155,7 +221,7 @@ Regenerable reports/screenshots: `test-results/attachments/report.json`,
 `test-results/companion/` (original companion suite), and the existing suite
 directories. No raw request dumps, credentials or personal browsing data committed.
 
-OCR, password-protected PDFs, additional PDF-tab reading, arbitrary encodings,
+OCR extraction, password-protected PDFs, additional PDF-tab reading, arbitrary encodings,
 SVG/GIF and arbitrary URL attachment fetching are intentionally unsupported.
 Provider-specific image/context limits can be stricter than the local bounds.
 No real model credentials/payments or live external service checks were used.

@@ -16,6 +16,8 @@ and PDF.js, and DOMPurify under
 its offered Apache-2.0 alternative (the package also offers MPL-2.0). PDF.js's
 bundled fonts and CMaps carry additional notices; see
 `standard_fonts/LICENSE_*` and `cmaps/LICENSE` in `dist`.
+The PDF reader and worker use PDF.js's shipped compatibility builds (including
+its upstream-bundled polyfills), without changing the pinned PDF.js version.
 
 **Liberation font exception:** PDF.js bundles unmodified Liberation Sans 1.07.4
 under GPL v2 with the Liberation font exception, not the SIL OFL used by newer

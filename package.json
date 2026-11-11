@@ -20,7 +20,7 @@
     "test:panel-state": "node --test test-panel-state.mjs",
     "test:identity": "node --test test-identity.mjs",
     "test": "node test.mjs",
-    "test:pdf": "node test-pdf.mjs",
+    "test:pdf": "node test-pdf.mjs && node test-pdf-visual.mjs",
     "test:research": "node test-research.mjs",
     "test:research:live": "node test-research.mjs --live",
     "test:conversations": "node test-conversations.mjs",

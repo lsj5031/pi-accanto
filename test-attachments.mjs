@@ -214,7 +214,8 @@ try {
   await panel.reload(); await ready(panel);
   assert.equal(await panel.locator('#attachment-list li').count(), 3);
   await files([payload('scan.pdf', pdf([null]), 'application/pdf'), payload('empty.pdf', pdf([[]]), 'application/pdf'), payload('corrupt.pdf', '%PDF-1.7\nbroken', 'application/pdf'), payload('broken.png', 'not an image', 'image/png')]);
-  assert.match(await panel.locator('#attachment-list').textContent(), /OCR unavailable/);
+  assert.match(await panel.locator('#attachment-list').textContent(), /Visual reading available with a vision model/);
+  assert.equal(await panel.locator('#attachment-list li').filter({ hasText: 'scan.pdf' }).getAttribute('data-state'), 'ready');
   assert.match(await panel.locator('#attachment-list').textContent(), /could not be parsed/);
   assert.match(await panel.locator('#attachment-list').textContent(), /Invalid image/);
   assert.match(await read(await id('scan.pdf')), /No extractable text/);

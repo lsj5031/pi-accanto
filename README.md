@@ -57,14 +57,16 @@ earlier conversation messages remain saved.
 - Up to **10 additional sources**, **16 MiB per file**, **2 MiB per UTF-8 text
   file**, **48 MiB combined**, and **16 megapixels per image**.
 - Supported files: PDF, PNG, JPEG, WebP, TXT, Markdown, CSV, JSON, LOG and TSV.
-  PDFs are text-extracted locally with physical page references. Scans/blank
-  pages produce an honest “OCR unavailable” result, not invented text.
+  PDFs keep local native-text extraction and physical page references. For
+  scans, diagrams or partial-text pages, a vision model can request local page
+  renders, at most two per read. No-text metadata does not mean a page is blank.
 - The model gets a small source catalog, not every whole file in each question.
-  `list_sources` and `read_source` provide bounded reads, also through Code Mode.
-  Images are returned as actual image content when requested.
+  `list_sources` and `read_source` provide bounded reads. Native text works
+  through Code Mode; image/visual reads must be called directly by the model
+  because this Code Mode version drops reader images.
 - Known native model profiles determine image support. Unknown/custom models
   default to text-only; enable **My custom model accepts images** in Settings
-  only if your server/model supports vision. Text and PDFs work without vision.
+  only if your server/model supports vision. Native PDF text works without vision.
 - The tab picker shows local titles and URLs; only your chosen tab is attached.
   Reading requires Chrome website access. Closing, reloading or navigating that
   tab, or restarting Chrome, requires explicitly selecting it again. Additional
@@ -304,8 +306,9 @@ either answer, so this also checks that Accanto reads the updated page.
   queries go to the selected search provider. Read [Privacy](PRIVACY.md).
 - **You stay in control.** Accanto can read, search, calculate and replace ordinary
   text fields. It doesn't autonomously navigate, click buttons or submit forms.
-- **Some content needs another approach.** Scanned PDFs need OCR, which isn't
-  supported. Password fields are excluded. Login walls, expired links and site
+- **Some content needs another approach.** Scanned PDFs and diagrams need a
+  vision-capable model for visual interpretation, not OCR extraction. Password
+  fields are excluded. Login walls, expired links and site
   restrictions can prevent source reads; long documents have reading limits.
 - **This is an early Chrome release.** Edge and unattended execution with all
   views closed aren't verified. Model capabilities and account limits vary.

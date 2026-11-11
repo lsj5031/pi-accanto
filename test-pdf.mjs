@@ -127,7 +127,7 @@ try {
     await attach();
     await send();
     assert.match(await result(), /No extractable text/);
-    assert.match(await result(), /OCR and vision are not available/);
+    assert.match(await result(), /Request visual:true/);
   }
   await panel.locator('article.toolResult summary').last().evaluate(summary => summary.click());
   await panel.screenshot({ path: resolve(artifacts, 'pdf-no-text.png') });

@@ -25,7 +25,7 @@ await writeFile('dist/manifest.json', `${JSON.stringify(manifest, null, 2)}\n`);
 await writeFile('dist/companion.html', (await readFile('panel.html', 'utf8')).replace('src="panel.js"', 'src="companion-bridge.js"'));
 await rm('dist/assets', { recursive: true, force: true });
 await cp('assets', 'dist/assets', { recursive: true });
-await copyFile('node_modules/pdfjs-dist/build/pdf.worker.mjs', 'dist/pdf.worker.mjs');
+await copyFile('node_modules/pdfjs-dist/legacy/build/pdf.worker.mjs', 'dist/pdf.worker.mjs');
 for (const directory of ['cmaps', 'standard_fonts']) {
   await cp(`node_modules/pdfjs-dist/${directory}`, `dist/${directory}`, { recursive: true });
 }

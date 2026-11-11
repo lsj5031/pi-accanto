@@ -1,3 +1,5 @@
+import { deflateSync } from 'node:zlib';
+
 // Small valid PDFs with deterministic, asymmetric text and physical page order.
 export function pdf(pages, fontSize = 16) {
   const objects = ['<< /Type /Catalog /Pages 2 0 R >>', '', '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>'];
@@ -6,10 +8,13 @@ export function pdf(pages, fontSize = 16) {
     const id = objects.length + 1;
     kids.push(`${id} 0 R`);
     // null creates a raster-only page; [] creates an empty page.
+    const [, , width = 612, height = 792] = lines?.box?.split(' ').map(Number) || [];
+    const raster = lines?.rgb ? `q ${width} 0 0 ${height} 0 0 cm BI /W ${lines.width} /H ${lines.height} /CS /RGB /BPC 8 /F [/AHx /Fl] ID ${deflateSync(lines.rgb).toString('hex')}> EI Q\n` : '';
+    const textLines = lines?.rgb ? (lines.lines || []) : lines;
     const stream = lines === null
       ? 'q 200 0 0 100 40 600 cm BI /W 2 /H 2 /CS /RGB /BPC 8 /F /AHx ID FF000000FF000000FFFFFFFF> EI Q'
-      : lines.map((line, i) => `BT /F1 ${fontSize} Tf 40 ${740 - i * fontSize * 1.5} Td (${line.replace(/[\\()]/g, '\\$&')}) Tj ET`).join('\n');
-    objects.push(`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R >> >> /Contents ${id + 1} 0 R >>`, `<< /Length ${Buffer.byteLength(stream)} >>\nstream\n${stream}\nendstream`);
+      : raster + textLines.map((line, i) => `BT /F1 ${fontSize} Tf 40 ${740 - i * fontSize * 1.5} Td (${line.replace(/[\\()]/g, '\\$&')}) Tj ET`).join('\n');
+    objects.push(`<< /Type /Page /Parent 2 0 R /MediaBox [${lines?.box || '0 0 612 792'}] /Resources << /Font << /F1 3 0 R >> >> /Contents ${id + 1} 0 R >>`, `<< /Length ${Buffer.byteLength(stream)} >>\nstream\n${stream}\nendstream`);
   }
   objects[1] = `<< /Type /Pages /Count ${pages.length} /Kids [${kids.join(' ')}] >>`;
   let result = '%PDF-1.4\n';
