@@ -209,6 +209,21 @@ try {
   await a.locator('#prompt').fill('');
   await page.bringToFront();
   await fitWindow(page);
+  const companionFile = 'November reconciliation and delivery assumptions for the northern regional programme.txt';
+  await a.locator('#attachment-files').setInputFiles({ name: companionFile, mimeType: 'text/plain', buffer: Buffer.from('Companion attachment evidence: reserve 284.') });
+  await a.waitForFunction(() => document.querySelector('#attachment-list li')?.dataset.state === 'ready');
+  assert.match(await a.locator('#attachment-list').textContent(), /Text · Ready/);
+  assert.equal(await a.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+  await page.screenshot({ path: resolve(artifacts, 'attachments-compact.png') });
+  await a.locator('#enlarge').click();
+  await a.waitForFunction(() => document.getElementById('enlarge').getAttribute('aria-pressed') === 'true');
+  await page.screenshot({ path: resolve(artifacts, 'attachments-expanded.png') });
+  assert.match(await a.locator('#attachment-list').textContent(), /November reconciliation/);
+  await a.locator('#enlarge').click();
+  await a.waitForFunction(() => document.getElementById('enlarge').getAttribute('aria-pressed') === 'false');
+  await a.getByRole('button', { name: `Remove ${companionFile}`, exact: true }).click();
+  await a.waitForFunction(() => document.getElementById('attachment-feedback').textContent.includes('cannot be retracted'));
+  assert.equal(await a.locator('#attachment-menu > summary').evaluate(element => element === document.activeElement), true);
   const requestsBeforeStop = modelRequests.length;
   await a.evaluate(() => {
     const execute = chrome.scripting.executeScript.bind(chrome.scripting);

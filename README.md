@@ -41,6 +41,40 @@ sections when the first excerpt isn't enough.
 
 Text replacements stay in the field for you to review. Accanto never clicks Submit.
 
+## Bring sources together
+
+Use **+** beside the page chip to attach PDFs, images or text files, or explicitly
+choose another browser tab. You can also drop files into Accanto or paste an image
+into its composer. The main page and its context controls stay in place.
+
+Try: “Compare this page’s budget with the attached PDF and notes. Cite the PDF
+pages and explain the differences.” Named source chips show importing, ready,
+failure and unsupported-image states. Use a chip’s **×** button to remove it.
+Files stay with this saved conversation across reloads and **Open in a tab**.
+Resetting the chat or changing its page/web context clears additional sources;
+earlier conversation messages remain saved.
+
+- Up to **10 additional sources**, **16 MiB per file**, **2 MiB per UTF-8 text
+  file**, **48 MiB combined**, and **16 megapixels per image**.
+- Supported files: PDF, PNG, JPEG, WebP, TXT, Markdown, CSV, JSON, LOG and TSV.
+  PDFs are text-extracted locally with physical page references. Scans/blank
+  pages produce an honest “OCR unavailable” result, not invented text.
+- The model gets a small source catalog, not every whole file in each question.
+  `list_sources` and `read_source` provide bounded reads, also through Code Mode.
+  Images are returned as actual image content when requested.
+- Known native model profiles determine image support. Unknown/custom models
+  default to text-only; enable **My custom model accepts images** in Settings
+  only if your server/model supports vision. Text and PDFs work without vision.
+- The tab picker shows local titles and URLs; only your chosen tab is attached.
+  Reading requires Chrome website access. Closing, reloading or navigating that
+  tab, or restarting Chrome, requires explicitly selecting it again. Additional
+  PDF tabs should be attached as PDF files instead.
+
+Source names/content are untrusted data, not instructions. Removing a source
+deletes its stored original and blocks future tool reads; it cannot retract
+excerpts/images already in messages or copies received by your provider.
+See [privacy and deletion details](PRIVACY.md).
+
 ## Get started
 
 You'll need **Chrome** and an

@@ -46,9 +46,12 @@ function parseExa(body) {
 }
 
 // This function is serialized into the attached tab; keep it self-contained.
-export function pagePassages(origin, url, query, start = 0) {
+export function pagePassages(origin, url, query, start = 0, limit = 4000, exact = false) {
+  if (exact && location.href !== url) return { error: 'Selected tab navigated. Remove and select it again.' };
   if (location.origin !== origin || (url.startsWith('file:') && location.href !== url)) return { error: 'The attached tab moved to another site or local file. Choose Use this page to attach it explicitly.' };
-  if (document.contentType === 'application/pdf') return { error: 'Use inspect_tab with start_page to read PDF pages. In-page search currently supports HTML.' };
+  if (document.contentType === 'application/pdf') return { error: exact
+    ? 'Additional PDF tabs are not supported. Attach this PDF as a file to read it beside the main page.'
+    : 'Use inspect_tab with start_page to read PDF pages. In-page search currently supports HTML.' };
   const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
   let text = '';
   let node;
@@ -70,7 +73,7 @@ export function pagePassages(origin, url, query, start = 0) {
     }
     return { title: document.title, url: location.href, query, matches, nextOffset: matches.length === 10 ? offset : null, searchedCharacters: text.length, truncated, note: 'Literal, case-insensitive visible HTML text search. Fields and inaccessible frames excluded. Offsets apply to this document snapshot; no page annotations were added.' };
   }
-  return { title: document.title, url: location.href, start, text: text.slice(start, start + 4000), nextOffset: start + 4000 < text.length ? start + 4000 : null, truncated, note: 'Bounded visible HTML section; fields excluded. Text may change between reads.' };
+  return { title: document.title, url: location.href, start, text: text.slice(start, start + limit), nextOffset: start + limit < text.length ? start + limit : null, truncated, note: 'Bounded visible HTML section; fields excluded. Text may change between reads.' };
 }
 
 export function createResearchTools({ inTarget, sources, showSources, showSearchFallback }) {

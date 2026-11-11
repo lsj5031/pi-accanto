@@ -301,9 +301,10 @@ try {
   await reopened.waitForFunction(() => document.getElementById('connection-status').textContent.includes('does not list model missing-model'));
   assert.equal(await reopened.evaluate(async () => (await chrome.storage.local.get('modelConnection')).modelConnection), undefined);
   await reopened.locator('#model-id').fill('fixture-model-719');
+  assert.equal(await reopened.locator('#custom-image-input').isChecked(), false, 'Unknown models default to text-only');
   await reopened.locator('#connect').click();
   await reopened.waitForFunction(() => document.getElementById('provider-notice').textContent === 'fixture-model-719');
-  assert.deepEqual(await reopened.evaluate(async () => (await chrome.storage.local.get('modelConnection')).modelConnection), { endpoint: modelEndpoint, modelId: 'fixture-model-719', api: 'openai-completions' });
+  assert.deepEqual(await reopened.evaluate(async () => (await chrome.storage.local.get('modelConnection')).modelConnection), { endpoint: modelEndpoint, modelId: 'fixture-model-719', api: 'openai-completions', imageInput: false });
   assert.doesNotMatch(JSON.stringify(await reopened.evaluate(() => chrome.storage.local.get(null))), /fixture-key-719/);
   assert.equal(await reopened.locator('#api-key').inputValue(), '');
   await reopened.reload();

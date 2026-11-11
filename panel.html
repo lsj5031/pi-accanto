@@ -15,7 +15,7 @@
       <summary class="icon-button" aria-label="Conversation history" title="History and reset chat"><svg viewBox="0 0 20 20"><path d="M3 9a7 7 0 1 1 2 6M3 3v6h6M10 6v4l3 2"/></svg></summary>
       <section id="conversation-bar" class="popover" aria-label="Conversations">
         <div class="history-heading"><h2>Your chats</h2><button type="button" id="new-conversation" aria-describedby="reset-help" disabled><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 4v12M4 10h12"/></svg>Reset chat</button></div>
-        <p id="reset-help" class="context-hint">Start fresh in this saved chat. This does not create a new history entry.</p>
+        <p id="reset-help" class="context-hint">Start fresh in this saved chat and clear additional sources. This does not create a new history entry.</p>
         <div class="history-list"><fieldset id="conversation" aria-label="Saved conversations"></fieldset></div>
         <button type="button" id="open-conversation" title="Move this conversation to a browser tab before starting a reply">Open in a tab<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M7 4H4v12h12v-3M10 4h6v6M16 4l-7 7"/></svg></button>
       </section>
@@ -35,6 +35,8 @@
         <p id="endpoint-help">OpenAI-compatible URL, usually ending in /v1.</p>
         <label for="model-id">Model ID</label>
         <input id="model-id" required spellcheck="false" placeholder="Model listed by /models">
+        <label class="checkbox"><input id="custom-image-input" type="checkbox">My custom model accepts images</label>
+        <p>Known model profiles determine image support automatically. For unknown models, enable only if your server supports image input.</p>
         <label for="api-key">API key</label>
         <input id="api-key" type="password" autocomplete="off" spellcheck="false" aria-describedby="key-help">
         <label class="checkbox"><input id="remember-model-key" type="checkbox" checked>Remember API key on this device</label>
@@ -139,15 +141,30 @@
     <button type="button" id="allow-model-access" hidden>Allow model access</button>
     <form id="composer">
       <div class="compose-box">
+        <ul id="attachment-list" aria-label="Attached sources" hidden></ul>
+        <p id="attachment-feedback" role="status"></p>
+        <div class="composer-context">
+        <details id="attachment-menu">
+          <summary class="icon-button" aria-label="Add sources" title="Add files or browser tabs">+</summary>
+          <div class="popover"><button type="button" id="choose-files">Attach files</button><button type="button" id="choose-tab">Choose browser tab</button><p>PDFs, images and text · Drop files or paste an image</p><p>Up to 10 sources, 16 MiB each (text 2 MiB), 48 MiB total. Saved on this device; read content goes to your model.</p></div>
+        </details>
+        <input type="file" id="attachment-files" accept=".pdf,.png,.jpg,.jpeg,.webp,.txt,.md,.csv,.json,.log,.tsv" multiple hidden>
         <details id="context-menu">
           <summary class="context-chip"><svg viewBox="0 0 20 20"><rect x="4" y="3" width="12" height="14" rx="2"/><path d="M7 7h6M7 10h6M7 13h4"/></svg><span id="target">This page</span><svg class="context-chevron" viewBox="0 0 20 20" aria-hidden="true"><path d="m6 8 4 4 4-4"/></svg></summary>
-          <div class="popover"><p id="target-hint" class="context-hint">Send a message to start</p><button type="button" id="page-conversation" disabled>Use this page</button><button type="button" id="web-conversation" disabled>Web only · No page attached</button></div>
+          <div class="popover"><p id="target-hint" class="context-hint">Send a message to start</p><p id="source-context-warning" class="context-hint" hidden>Changing page or web context removes additional sources. Earlier messages remain saved.</p><button type="button" id="page-conversation" disabled>Use this page</button><button type="button" id="web-conversation" disabled>Web only · No page attached</button></div>
         </details>
+        <span id="attachment-count"></span>
+        </div>
         <label for="prompt" id="composer-target" class="sr-only">Ask about this page</label>
         <div class="compose-bottom"><textarea id="prompt" rows="1" placeholder="Ask about this page…" required aria-describedby="help"></textarea>
         <div class="buttons"><button id="send" class="btn" disabled>Send</button><button type="button" id="stop" disabled>Stop</button></div></div>
       </div>
     </form>
+    <dialog id="tab-picker" aria-labelledby="tab-picker-title">
+      <div class="shortcuts-heading"><h2 id="tab-picker-title">Attach a browser tab</h2><button type="button" id="close-tab-picker" class="icon-button" aria-label="Close tab picker">×</button></div>
+      <p id="tab-picker-status" role="status"></p>
+      <div id="tab-choices"></div>
+    </dialog>
     <p id="navigation-warning" hidden>Reloading or leaving this page stops replies. Minimizing keeps them running. <button type="button" id="open-persistent-chat" disabled>Open in a tab before sending</button></p>
     <p id="help" class="sr-only">Page content goes to your chosen model. Ctrl or Command + Enter to send.</p>
   </footer>

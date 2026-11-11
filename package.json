@@ -27,7 +27,8 @@
     "test:companion": "node test-companion.mjs",
     "test:native": "node test-native.mjs",
     "test:shortcuts": "node test-shortcuts.mjs",
-    "test:fixtures": "npm test && npm run test:conversations && npm run test:pdf && npm run test:research && npm run test:companion"
+    "test:attachments": "node test-attachments.mjs",
+    "test:fixtures": "npm test && npm run test:conversations && npm run test:pdf && npm run test:research && npm run test:companion && npm run test:attachments"
   },
   "dependencies": {
     "@earendil-works/chord": "1.4.0",

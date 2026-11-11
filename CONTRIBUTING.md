@@ -62,6 +62,23 @@ stage and while submission is being queued. The companion fixtures additionally
 cover drafts across idle/deferred model-change reloads, two-way page-context
 switching, configuration versus chat verification, and rendered text contrast.
 
+`npm run test:attachments` is the focused multi-source suite (also part of
+`test:fixtures` and CI). It uses real file inputs, drag/drop/paste events,
+PDF.js, the shipped source collection and Code Mode, plus a local faux HTTP
+provider through the production Chat Completions adapter. It asserts actual
+outbound image bytes and PDF/text tool evidence, not model understanding.
+No real keys, payments, profiles or external model/search calls are used.
+The companion suite also attaches/removes a long-named text file in the actual
+authenticated compact and enlarged iframe.
+
+Keep source records and binary lifetimes separate from the model transcript.
+`attachments.js` owns stable IDs, bounds, persistence and read cancellation;
+`attachments-ui.js` owns file/paste/drop/tab selection and accessible source
+controls. A tab source binds both browser-session and exact Chrome document
+identity. Never replace that with a reusable tab ID or permission-based scan.
+See [attachment verification](docs/verification/attachments.md) for screenshots,
+tested lifecycle semantics and the explicit design-engineering critique.
+
 ## Opt-in integration checks
 
 `npm run test:research:live` adds real provider requests and live-model scenarios.
