@@ -2,7 +2,42 @@
 
 Verified in an isolated Droid worktree on Linux, using pinned Playwright Chromium.
 Base: `d927ff0c9de5ee965069da5dd84112e6f06b0a02`; branch:
-`feat/conversation-attachments`. Primary checkout untouched. No publication.
+`feat/conversation-attachments`. Primary checkout untouched. No publication by
+this agent; the user subsequently published the branch.
+
+## Composer geometry follow-up
+
+Small visual correction on the same branch after `2470411`. The earlier visual
+review missed the font-based plus's low/right appearance and inconsistent
+composer geometry. No source-storage, model, permission or lifecycle changes.
+
+| Before | After | Why |
+| --- | --- | --- |
+| Font `+` inside a 34px add control | Symmetric 18px SVG inside the existing 32px icon-button system | Center the actual drawn glyph independently of font metrics |
+| Add 34px, context 28px, action 32px; radii 7/6/8px | Shared 32px height and 7px radius; context padding 8px, action padding 10px | Cohesive controls without changing their roles or labels |
+| Font `×` for attachment removal and tab-picker close | Matching centered SVG crosses, retaining accessible names and keyboard behavior | Correct the same font-metric defect in related controls |
+| Inline action spacing and separate Stop display modes | Explicit 6px flex gap and consistent flex centering | Keep simultaneous import Stop/Send controls aligned |
+
+Validation for this follow-up only:
+
+- `npm run build` and the **existing** `npm run test:attachments` passed.
+  The complete fixtures, packaging and unrelated suites were deliberately not
+  rerun.
+- **New** `test/control-geometry.mjs` assertions run through that suite:
+  empty/loading/dialog states, 320/380/900px panels, actual Chrome 200% zoom,
+  and actual compact/enlarged companion iframes. Visible composer controls are
+  32px high with 7px radii. Add/context/source-count center differences and
+  SVG/control center differences are below 0.1 CSS pixel; context text is
+  within 1 CSS pixel of vertical center. Actual SVG drawing bounds, not only
+  the SVG viewport, are checked for plus/remove/close.
+- Before the CSS correction, the new browser assertion failed with
+  `Empty compact panel: 32px composer control, got 34`.
+- Fresh compact/enlarged, 320px, loading and 200% screenshots were opened and
+  inspected directly. The plus is centered, controls share geometry, remove
+  crosses remain clear, and the context/count and loading actions align.
+  Existing keyboard menu/removal/focus and source behavior checks still pass.
+- Evidence below is refreshed from the focused suite, including its new
+  actual-iframe captures and tab-picker close screenshot.
 
 ## Scope and lifecycle
 
@@ -36,7 +71,7 @@ Base: `d927ff0c9de5ee965069da5dd84112e6f06b0a02`; branch:
   the original, but cannot retract earlier messages, provider copies or backups.
   History can resend earlier excerpts/images, as with existing page evidence.
 
-## Checks and outcomes
+## Original implementation checks and outcomes
 
 All following final commands passed:
 
@@ -96,7 +131,7 @@ Chrome **200% zoom** (not merely a scaled screenshot).
 | --- | --- | --- |
 | New failures could be below the source list's visible area | New selections scroll into view; subsequent updates preserve scrolling/focus | Immediate, predictable feedback without stealing keyboard focus |
 | UUID-key order changed chip order after reload | Persist monotonic selection order | Spatial consistency should survive a handoff/reload |
-| Small, low-salience remove glyph | 32px named keyboard-operable target and 20px glyph; focus returns to `+` | Removal is discoverable and repeated keyboard use stays predictable |
+| Small, low-salience remove glyph | 32px named keyboard-operable target; follow-up replaces font glyph with centered SVG; focus returns to `+` | Removal is discoverable and repeated keyboard use stays predictable |
 | Page chip competed with the source count at narrow widths | Shrinkable page chip; bounded, independently scrolling source list | Keep the composer and main-page controls usable at 320px and 200% zoom |
 | Raw `read_source` / `list_sources` activity names | “Read attached source” / “List attached sources” | Describe the user's action instead of an implementation identifier |
 | Idle imports had no usable Stop control | Stop appears during imports and cancellation is immediate | Loading must be interruptible, not decorative feedback |
@@ -106,17 +141,18 @@ Chrome **200% zoom** (not merely a scaled screenshot).
 
 ## Evidence and remaining limits
 
-Selected synthetic screenshots (under 700 KiB total) are committed under
+Selected synthetic screenshots are committed under
 [`attachments/`](attachments/):
 
 - Ordered flow: `01-empty-compact.png`, `02-add-menu.png`, `02b-loading.png`,
   `03-ready-page-and-files.png`, `04-answer.png`, `05-remove.png`.
-- States/layout: `06-failure-and-scan.png`, `07-layout-320.png`,
+- States/layout: `02c-tab-picker.png`, `06-failure-and-scan.png`, `07-layout-320.png`,
   `08-200-percent.png`, `10-text-only-model.png`.
 - Actual iframe: `attachments-compact.png`, `attachments-expanded.png`.
 
 Regenerable reports/screenshots: `test-results/attachments/report.json`,
-`test-results/attachments/`, `test-results/companion/`, and the existing suite
+`test-results/attachments/` (including refreshed compact/enlarged iframe images),
+`test-results/companion/` (original companion suite), and the existing suite
 directories. No raw request dumps, credentials or personal browsing data committed.
 
 OCR, password-protected PDFs, additional PDF-tab reading, arbitrary encodings,

@@ -7,6 +7,7 @@ import { build } from 'esbuild';
 import { chromium } from 'playwright';
 import { browserOptions, artifactDirectory } from './test/browser.mjs';
 import { pdf } from './test/pdf-fixtures.mjs';
+import { checkControlGeometry } from './test/control-geometry.mjs';
 
 const artifacts = artifactDirectory('attachments');
 await mkdir(artifacts, { recursive: true });
@@ -95,6 +96,7 @@ try {
     await panel.waitForFunction(() => !document.querySelector('#attachment-list [data-state=loading]'));
   };
   await shot('01-empty-compact.png');
+  await checkControlGeometry(panel, 'Empty compact panel');
   await panel.locator('#attachment-menu > summary').focus();
   await panel.keyboard.press('Enter');
   assert.equal(await panel.locator('#choose-files').isVisible(), true);
@@ -120,6 +122,7 @@ try {
     payload('notes.csv', 'name,value\nextra,57'),
   ]);
   await panel.locator('#attachment-list [data-state=loading]').waitFor();
+  await checkControlGeometry(panel, 'Loading with Send and Stop');
   await shot('02b-loading.png');
   await panel.evaluate(() => window.releaseFixtureImport());
   await panel.waitForFunction(() => document.querySelectorAll('#attachment-list li').length === 3 && !document.querySelector('#attachment-list [data-state=loading]'));
@@ -152,6 +155,8 @@ try {
   });
   await panel.locator('#attachment-menu > summary').click();
   await panel.locator('#choose-tab').click();
+  await checkControlGeometry(panel, 'Tab picker close control');
+  await shot('02c-tab-picker.png');
   const additionalTabId = tabs.find(tab => tab.url === `${origin}/other`).id;
   assert.equal(await panel.evaluate(tabId => window.attachmentScriptCalls.filter(call => call.tabId === tabId).length, additionalTabId), 0);
   await panel.locator('#tab-choices button').filter({ hasText: 'Additional tab evidence' }).click();
@@ -237,10 +242,12 @@ try {
   for (const width of [320, 380, 900]) {
     await panel.setViewportSize({ width, height: 850 });
     assert.equal(await panel.evaluate(() => document.documentElement.scrollWidth > innerWidth), false, `No horizontal overflow at ${width}`);
+    await checkControlGeometry(panel, `${width}px panel`);
     await shot(`07-layout-${width}.png`);
   }
   await panel.evaluate(async () => { const tab = await chrome.tabs.getCurrent(); await chrome.tabs.setZoom(tab.id, 2); });
   await panel.waitForFunction(() => innerWidth <= 450);
+  await checkControlGeometry(panel, 'Chrome 200% zoom');
   await shot('08-200-percent.png');
   assert.equal(await panel.locator('#attachment-menu > summary').isVisible(), true);
   assert.ok(await panel.locator('#send').evaluate(element => element.getBoundingClientRect().bottom <= innerHeight));
@@ -429,6 +436,41 @@ try {
   await panel.getByRole('button', { name: 'Remove web-only-notes.txt', exact: true }).focus();
   await panel.keyboard.press('Enter');
   await panel.waitForFunction(() => document.activeElement === document.querySelector('#attachment-menu > summary'));
+  // Capture the real isolated-world companion, not a resized standalone panel.
+  await panel.close();
+  await main.bringToFront();
+  await main.setViewportSize({ width: 1280, height: 840 });
+  const mainTab = await worker.evaluate(async url => (await chrome.tabs.query({})).find(tab => tab.url === url), main.url());
+  const cdp = await browser.newCDPSession(main);
+  try {
+    const { windowId, bounds } = await cdp.send('Browser.getWindowForTarget');
+    await cdp.send('Browser.setWindowBounds', { windowId, bounds: {
+      width: bounds.width + Math.max(0, 1280 - mainTab.width),
+      height: bounds.height + Math.max(0, 840 - mainTab.height),
+    } });
+  } finally { await cdp.detach(); }
+  const host = main.locator('[data-accanto-companion]');
+  const launcher = await host.boundingBox();
+  await main.mouse.click(launcher.x + 26, launcher.y + 26);
+  await main.waitForFunction(() => [...document.querySelectorAll('[data-accanto-companion]')].length === 1);
+  const companion = main.frames().find(frame => frame.url().includes('/companion.html'))
+    ?? await main.waitForEvent('framenavigated', { predicate: frame => frame.url().includes('/companion.html') });
+  await companion.waitForFunction(() => document.body.dataset.embedded === 'true');
+  await ready(companion);
+  await companion.locator('#context-menu > summary').click();
+  await companion.locator('#page-conversation').click();
+  await idle(companion);
+  await companion.locator('#history-menu > summary').click();
+  await companion.locator('#new-conversation').click();
+  await idle(companion);
+  await companion.locator('#attachment-files').setInputFiles([payload(longName, 'Synthetic geometry evidence: delivery 96.')]);
+  await companion.waitForFunction(() => !document.querySelector('#attachment-list [data-state=loading]'));
+  await checkControlGeometry(companion, 'Actual compact companion');
+  await main.screenshot({ path: resolve(artifacts, 'attachments-compact.png') });
+  await companion.locator('#enlarge').click();
+  await companion.waitForFunction(() => document.getElementById('enlarge').getAttribute('aria-pressed') === 'true');
+  await checkControlGeometry(companion, 'Actual expanded companion');
+  await main.screenshot({ path: resolve(artifacts, 'attachments-expanded.png') });
   assert.deepEqual(errors, []);
   await writeFile(resolve(artifacts, 'report.json'), JSON.stringify({ fixtureOnly: true, outboundRequests: requests.length, boundary, checks: 'Page+PDF asymmetric evidence; named text/multiple files; paste/drop; actual adapter multimodal bytes and PDF/text tool results; text-only rejection/PDF recovery; explicit/stale/restarted tab; remove/reload/handoff/isolation; size/count/total/type/corruption/scans; cancellation; narrow/wide/200% screenshots; keyboard menu/focus' }, null, 2));
   console.log('PASS: attachment browser behavior, source tools, lifecycle, limits and actual outbound multimodal fixture requests.');

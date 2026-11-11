@@ -108,7 +108,8 @@ export function attachmentUI({ owns, busy }) {
       }
       const remove = document.createElement('button');
       remove.type = 'button'; remove.className = 'icon-button';
-      remove.textContent = '×'; remove.dataset.removeSource = record.id;
+      remove.innerHTML = '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="m5 5 10 10M15 5 5 15"/></svg>';
+      remove.dataset.removeSource = record.id;
       remove.setAttribute('aria-label', `Remove ${record.name}`);
       remove.onclick = async () => {
         try {

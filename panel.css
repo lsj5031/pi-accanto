@@ -20,15 +20,14 @@
 * { box-sizing: border-box; }
 .composer-context { display: flex; align-items: center; gap: 6px; min-width: 0; }
 #attachment-menu { position: relative; flex-shrink: 0; }
-#attachment-menu > summary { font-size: 24px; width: 34px; height: 34px; border: 1px solid var(--border); background: var(--secondary); }
+#attachment-menu > summary { border: 1px solid var(--border); background: var(--secondary); }
 #attachment-menu .popover { position: absolute; bottom: 42px; left: 0; width: min(280px, calc(100vw - 48px)); padding: 8px; }
 #attachment-menu .popover button { width: 100%; text-align: left; background: transparent; color: var(--foreground); }
 #attachment-menu .popover p { padding: 6px; font-size: 12px; color: var(--muted); }
 #attachment-count { flex-shrink: 0; font-size: 11px; color: var(--muted); }
 .composer-context #context-menu { min-width: 0; margin-bottom: 0; }
 .composer-context { margin-bottom: 6px; }
-#attachment-list .icon-button { font-size: 20px; }
-#stop:not(:disabled) { display: inline-block; }
+#stop:not(:disabled) { display: inline-flex; }
 #attachment-list { list-style: none; margin: 0 0 8px; padding: 0; display: grid; gap: 6px; max-height: min(26dvh, 200px); overflow-y: auto; overscroll-behavior: contain; }
 #attachment-list li { display: flex; align-items: flex-start; gap: 6px; min-width: 0; padding: 7px 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--secondary); }
 .attachment-copy { min-width: 0; flex: 1; }
@@ -221,21 +220,21 @@ footer { flex-shrink: 0; padding: 8px 12px 12px; background: var(--background); 
 .compose-box { position: relative; padding: 9px 10px 10px; background: #fff; border: 1px solid #d7e1ca; border-radius: 12px; }
 .compose-box:focus-within { border-color: #9bb57c; box-shadow: 0 0 0 2px #e5eddc; }
 #context-menu { position: relative; width: fit-content; max-width: 100%; margin-bottom: 8px; }
-.context-chip { display: flex; align-items: center; gap: 5px; max-width: 100%; width: fit-content; padding: 3px 6px; min-height: 28px; list-style: none; border: 1px solid #e1e8d8; border-radius: 6px; background: #f5f8ef; color: #526746; font-size: 12px; }
+.context-chip { display: flex; align-items: center; gap: 5px; max-width: 100%; width: fit-content; padding: 0 8px; height: 32px; min-height: 32px; list-style: none; border: 1px solid #e1e8d8; border-radius: 7px; background: #f5f8ef; color: #526746; font-size: 12px; }
 .context-chip svg { width: 14px; height: 14px; }
 #context-menu[open] .context-chevron { transform: rotate(180deg); }
 #target { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-#context-menu .popover { position: absolute; bottom: 32px; left: 0; width: min(260px, calc(100vw - 48px)); padding: 10px; }
+#context-menu .popover { position: absolute; bottom: 40px; left: 0; width: min(260px, calc(100vw - 48px)); padding: 10px; }
 #context-menu button { width: 100%; text-align: left; margin-top: 8px; padding: 7px; color: var(--accent); background: var(--secondary); font-size: 12px; }
 #navigation-warning { margin: 8px 6px 0; color: var(--muted); font-size: 12px; line-height: 1.4; }
 #navigation-warning button { min-height: 24px; padding: 2px 0; color: var(--accent); background: transparent; text-align: left; text-decoration: underline; font-size: inherit; }
 .compose-bottom { display: flex; gap: 8px; align-items: flex-end; }
 textarea { display: block; flex: 1; width: 100%; min-width: 0; field-sizing: content; min-height: 34px; max-height: min(160px, 32dvh); padding: 4px 0; border: 0; outline: 0; background: transparent; resize: none; overflow-y: auto; overflow-wrap: anywhere; scrollbar-width: thin; scrollbar-color: #d7dfce transparent; line-height: 24px; font-size: 16px; }
 textarea::placeholder { color: #9aa68f; font-size: 13px; }
-.buttons { flex-shrink: 0; }
-.buttons button { min-height: 32px; padding: 5px 10px; font-size: 12px; }
+.buttons { display: flex; gap: 6px; flex-shrink: 0; }
+.buttons button { display: inline-flex; align-items: center; justify-content: center; height: 32px; min-height: 32px; padding: 0 10px; border-radius: 7px; font-size: 12px; }
 #stop { display: none; color: #805140; background: #f4eae2; }
-body[data-busy=true] #stop { display: inline-block; }
+body[data-busy=true] #stop { display: inline-flex; }
 body[data-busy=true] #send { display: none; }
 body[data-embedded=true] #connection { display: none; }
 body[data-embedded=true] .product-header { padding-inline: 12px; }
