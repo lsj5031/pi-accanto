@@ -18,10 +18,11 @@ export async function prepareRelease({ root = process.cwd(), tag, verify = false
     n.startsWith('assets/') && !/^assets\/(?:icon-(?:16|32|48|128)\.png|companion\.svg)$/.test(n) ||
     n.startsWith('cmaps/') && !/^cmaps\/(?:[a-zA-Z0-9_.-]+\.bcmap|LICENSE)$/.test(n) ||
     n.startsWith('standard_fonts/') && !/^standard_fonts\/(?:[a-zA-Z0-9_-]+\.(?:ttf|pfb)|LICENSE_[A-Z]+)$/.test(n) ||
+    n.startsWith('wasm/') && !/^wasm\/(?:jbig2_nowasm_fallback\.js|openjpeg_nowasm_fallback\.js|LICENSE_(?:JBIG2|OPENJPEG|PDFJS_JBIG2|PDFJS_OPENJPEG))$/.test(n) ||
     n.startsWith('licenses/') && !/^licenses\/[A-Z-]+LICENSE$/.test(n) ||
     n.startsWith('third-party/') && !/^third-party\/(?:index\.json|[@a-zA-Z0-9_-]+\/(?:licen[cs]e|notice|copying)(?:[._-][a-zA-Z0-9_-]+)?)$/i.test(n))) throw new Error('Private or unexpected archive file.');
-  if (new Set(names).size !== names.length || names.some(n => n.includes('..') || n.includes('\\') || n.startsWith('/') || !/^(?:assets\/|cmaps\/|standard_fonts\/|licenses\/|third-party\/|(?:manifest\.json|panel\.(?:js|html|css)|companion(?:-bridge|-host)?\.(?:js|html)|background\.js|codemode-worker\.js|quickjs\.wasm|basecoat\.css|pdf\.worker\.mjs|bundle-meta\.json|LICENSE|THIRD_PARTY_NOTICES\.md|[A-Z-]+-LICENSE)$)/.test(n))) throw new Error('Unsafe archive structure.');
-  for (const n of ['manifest.json', 'panel.js', 'panel.html', 'background.js', 'quickjs.wasm']) if (!names.includes(n)) throw new Error(`Missing archive asset: ${n}`);
+  if (new Set(names).size !== names.length || names.some(n => n.includes('..') || n.includes('\\') || n.startsWith('/') || !/^(?:assets\/|cmaps\/|standard_fonts\/|wasm\/|licenses\/|third-party\/|(?:manifest\.json|panel\.(?:js|html|css)|companion(?:-bridge|-host)?\.(?:js|html)|background\.js|codemode-worker\.js|quickjs\.wasm|basecoat\.css|pdf\.worker\.mjs|bundle-meta\.json|LICENSE|THIRD_PARTY_NOTICES\.md|[A-Z-]+-LICENSE)$)/.test(n))) throw new Error('Unsafe archive structure.');
+  for (const n of ['manifest.json', 'panel.js', 'panel.html', 'background.js', 'quickjs.wasm', 'wasm/jbig2_nowasm_fallback.js', 'wasm/openjpeg_nowasm_fallback.js']) if (!names.includes(n)) throw new Error(`Missing archive asset: ${n}`);
   execFileSync('unzip', ['-tq', archive], { stdio: 'pipe' });
   const built = JSON.parse(execFileSync('unzip', ['-p', archive, 'manifest.json'], { encoding: 'utf8' }));
   const expected = structuredClone(manifest); delete expected.action.default_popup;

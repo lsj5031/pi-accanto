@@ -26,6 +26,9 @@ test('offline release preparation verifies real ZIP, versions, notes and corrupt
     execFileSync('zip', ['-q', zip, '.env'], { cwd: root });
     await assert.rejects(prepareRelease({ root, tag: 'v0.3.0' }), /Private|Unsafe/);
     execFileSync('zip', ['-qd', zip, '.env']);
+    execFileSync('zip', ['-qd', zip, 'wasm/jbig2_nowasm_fallback.js']);
+    await assert.rejects(prepareRelease({ root, tag: 'v0.3.0' }), /Missing archive asset: wasm\/jbig2/);
+    execFileSync('zip', ['-q', zip, 'wasm/jbig2_nowasm_fallback.js'], { cwd: resolve('dist') });
     execFileSync('zip', ['-qd', zip, 'panel.js']);
     await assert.rejects(prepareRelease({ root, tag: 'v0.3.0' }), /Missing archive asset/);
     await rm(zip);
