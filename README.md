@@ -131,6 +131,8 @@ Select **dist**, not the project folder. Loading the source folder shows build
 instructions rather than starting the assistant.
 
 Before updating, save backups of your chats (below) and stop all active work.
+Each backup saves only the selected chat as a read-only archive, without settings
+or keys. It is not a full-profile rollback.
 Settings shows the installed version and an **Open latest release** link.
 Nothing checks for updates or downloads code in the background.
 Keep the installed folder where it is. To update a download, verify its checksum and extract the new

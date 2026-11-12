@@ -95,8 +95,13 @@ svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width:
 .portable-section a { text-decoration: underline; text-underline-offset: 3px; }
 #backup-status { padding: 8px; border-radius: 6px; background: var(--secondary); }
 #backup-status:empty { display: none; }
+#confirm-import { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+#transcript.archived { padding-bottom: 40px; scroll-padding-bottom: 40px; }
 #transcript.archived section { padding: 12px 0; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
 #transcript.archived pre { font: inherit; margin: 8px 0; }
+#transcript.archived a { text-decoration: underline; text-underline-offset: 3px; }
+.archive-page-control { display: flex; align-items: center; gap: 8px; margin: 12px 0 8px; }
+.archive-page-control input { width: 5em; padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px; background: white; }
 #settings h2 { font-size: 14px; font-weight: 600; }
 :is(#settings, #search-settings) p { font-size: 12px; color: var(--muted); overflow-wrap: anywhere; margin-top: 7px; }
 #settings .access-heading { margin-top: 22px; padding-top: 18px; border-top: 1px solid var(--line); }

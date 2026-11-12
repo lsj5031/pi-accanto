@@ -66,7 +66,7 @@ try {
   await chat.waitForFunction(() => document.getElementById('status').textContent.includes('Ready'));
   await chat.locator('#attachment-files').setInputFiles([
     { name: 'evidence.txt', mimeType: 'text/plain', buffer: Buffer.from('Restored evidence 713, source text.') },
-    { name: 'evidence.pdf', mimeType: 'application/pdf', buffer: pdf([['Portable PDF evidence 719.']]) },
+    { name: 'evidence.pdf', mimeType: 'application/pdf', buffer: pdf([['Portable PDF evidence 719. ' + 'T'.repeat(17000)], ['Second physical page evidence 723.']], 0.01) },
     { name: 'evidence.png', mimeType: 'image/png', buffer: Buffer.from(png, 'base64') },
   ]);
   await chat.waitForFunction(() => document.querySelectorAll('#attachment-list [data-state=ready]').length === 3);
@@ -128,9 +128,25 @@ try {
   await settings.locator('#backup-status').scrollIntoViewIfNeeded();
   await settings.screenshot({ path: resolve(artifacts, 'backup-error.png') });
   const original = await settings.evaluate(() => chrome.storage.local.get('conversations'));
-  await settings.locator('#backup-file').setInputFiles(file(backup));
+  const single = { ...backup, conversations: [{ ...backup.conversations[0], messages: backup.conversations[0].messages.slice(0, 1), sources: backup.conversations[0].sources.slice(0, 1) }] };
+  await settings.locator('#backup-file').setInputFiles(file(single));
+  await settings.getByRole('button', { name: 'Import 1 archived chat', exact: true }).waitFor();
+  assert.match(await settings.locator('#backup-status').textContent(), /1 conversation, 1 message, 1 source/);
+  await settings.locator('#backup-file').setInputFiles(file({ ...single, conversations: [single.conversations[0], single.conversations[0]] }));
+  await settings.getByRole('button', { name: 'Import 2 archived chats', exact: true }).waitFor();
+  assert.match(await settings.locator('#backup-status').textContent(), /2 conversations, 2 messages, 2 sources/);
+  await settings.locator('#cancel-import').click();
+  const restoreBackup = structuredClone(backup);
+  restoreBackup.conversations[0].messages.at(-1).blocks.push({ type: 'text', text: `Source citation [${backup.conversations[0].sources[0].id}].` });
+  await settings.locator('#backup-file').setInputFiles(file(restoreBackup));
   await settings.locator('#import-backup').waitFor();
-  await settings.locator('#backup-status').scrollIntoViewIfNeeded();
+  await settings.locator('#confirm-import').scrollIntoViewIfNeeded();
+  const summaryBox = await settings.locator('#backup-status').boundingBox();
+  const importBox = await settings.locator('#import-backup').boundingBox();
+  const cancelBox = await settings.locator('#cancel-import').boundingBox();
+  assert.ok(summaryBox.y + summaryBox.height <= importBox.y, 'Confirmation summary must precede the action');
+  assert.ok(cancelBox.x - importBox.x - importBox.width >= 7, 'Confirmation buttons need a visible gap');
+  assert.match(await settings.locator('.portable-section').textContent(), /not a full-profile rollback/);
   await settings.screenshot({ path: resolve(artifacts, 'settings-confirm.png') });
   await settings.evaluate(() => {
     const add = IDBObjectStore.prototype.add;
@@ -144,7 +160,7 @@ try {
   await settings.locator('#import-backup').click();
   await settings.locator('#backup-status').filter({ hasText: 'Imported 1' }).waitFor();
   // Repeated imports are explicitly new copies; existing live catalog untouched.
-  await settings.locator('#backup-file').setInputFiles(file(backup));
+  await settings.locator('#backup-file').setInputFiles(file(restoreBackup));
   await settings.locator('#import-backup').click();
   await settings.locator('#backup-status').filter({ hasText: 'Imported 1' }).waitFor();
   const archives = await settings.evaluate(async () => {
@@ -196,18 +212,55 @@ try {
   await settings.locator('#status').filter({ hasText: 'Read-only archive' }).waitFor();
   assert.match(await settings.locator('#transcript').textContent(), /Synthetic answer|Restored evidence 713/);
   assert.match(await settings.locator('#transcript').textContent(), /Synthetic tool evidence 721/);
+  const activity = settings.locator('#transcript .turn-activity');
+  assert.equal(await activity.getAttribute('open'), null);
+  let visible = await settings.locator('#transcript').innerText();
+  assert.doesNotMatch(visible, /toolResult|fixture_read/);
+  for (const source of backup.conversations[0].sources) assert.ok(!visible.includes(source.id), 'Default archive must not expose source UUIDs');
+  await activity.locator('summary').click();
+  assert.match(await activity.innerText(), /Synthetic tool evidence 721/);
+  await activity.locator('summary').click();
+  const citation = settings.locator('#transcript article a').filter({ hasText: 'evidence.txt' });
+  assert.equal(await citation.count(), 1);
+  await citation.click();
+  assert.equal(await citation.getAttribute('href'), '#archived-source-0');
+  assert.equal(archives[0].sources[0].id, backup.conversations[0].sources[0].id, 'Citation mapping must leave stored source IDs intact');
   assert.equal(await settings.locator('#transcript article img').count(), 1);
+  assert.match(await settings.locator('.archive-page-control').textContent(), /Page\s+of 2/);
   await settings.getByRole('button', { name: 'Read PDF page text' }).click();
-  await settings.getByRole('status').filter({ hasText: 'Portable PDF evidence 719' }).waitFor();
+  await settings.getByRole('status').filter({ hasText: 'Text limit reached; this page is only partially shown.' }).waitFor();
+  await settings.getByLabel('Physical page of evidence.pdf').fill('2');
+  await settings.getByRole('button', { name: 'Read PDF page text' }).click();
+  const pdfText = settings.getByRole('status').filter({ hasText: 'Second physical page evidence 723' });
+  await pdfText.waitFor();
+  assert.equal(await pdfText.textContent(), 'Page 2 of 2\nSecond physical page evidence 723.');
+  assert.doesNotMatch(await pdfText.textContent(), /"format"|"pages"|textStatus/);
+  await settings.screenshot({ path: resolve(artifacts, 'archive-pdf.png') });
   assert.equal(await settings.locator('#composer').isVisible(), false);
   const restored = settings.waitForEvent('download');
   await settings.getByRole('button', { name: 'Save source locally' }).first().click();
   assert.equal(await readFile(await (await restored).path(), 'utf8'), 'Restored evidence 713, source text.');
   assert.equal(await settings.evaluate(async () => (await navigator.locks.query()).held.filter(l => l.name.includes('owner')).length), 0);
   assert.deepEqual(network, [], 'Restoration and source reading must not fetch external resources');
+  await settings.locator('#transcript').evaluate(element => { element.scrollTop = 0; });
   await settings.screenshot({ path: resolve(artifacts, 'restored-archive.png') });
+  const lastSource = settings.locator('#transcript > section').last();
+  await lastSource.locator('summary').click();
+  await settings.locator('#transcript').evaluate(element => { element.scrollTop = element.scrollHeight; });
+  const bottom = await settings.locator('#transcript').evaluate(element => ({
+    top: element.scrollTop, remaining: element.scrollHeight - element.clientHeight - element.scrollTop,
+    gap: element.getBoundingClientRect().bottom - element.lastElementChild.getBoundingClientRect().bottom,
+    padding: getComputedStyle(element).paddingBottom,
+  }));
+  assert.ok(bottom.top > 0 && bottom.remaining <= 1, 'Archive must scroll to its actual bottom');
+  assert.ok(bottom.gap >= 39, 'Last source must clear the bottom edge with explicit padding');
+  assert.equal(bottom.padding, '40px');
+  const lastDownload = settings.waitForEvent('download');
+  await lastSource.getByRole('button', { name: 'Save source locally' }).click();
+  assert.deepEqual(await readFile(await (await lastDownload).path()), Buffer.from(png, 'base64'));
+  await settings.screenshot({ path: resolve(artifacts, 'archive-bottom.png') });
   await browser.tracing.stop({ path: resolve(artifacts, 'backup-trace.zip') });
-  console.log('Portable UI: fresh identity restore, native image, PDF/text/image bytes, duplicates and atomic rollback passed.');
+  console.log('Portable UI: restore/rollback retained; confirmation layout/plurals, collapsed activity, named citations, plain PDF pages and padded bottom reachability passed.');
 } finally {
   await Promise.all(contexts.map(c => c.close().catch(() => {})));
   await rm(scratch, { recursive: true, force: true });

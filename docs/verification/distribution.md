@@ -113,7 +113,7 @@ deleted separately.
 
 ## Evidence
 
-Final Linux run on 2026-11-12 passed `npm run package`, release preparation and
+Baseline Linux run for `678a7c2` on 2026-11-12 passed `npm run package`, release preparation and
 checksum re-verification, `test:release` (3), existing `test:distribution` (4),
 `test:permissions` (2), `test:panel-state` (5), `test:identity` (1), and complete
 `test:fixtures`: browser controls, conversations, PDFs including visual/timeout
@@ -121,7 +121,7 @@ checks, research, companion, attachments/geometry, and portable schema (4) plus
 real Chromium restore. No required fixture was skipped. The PDF visual check
 completed in 38.87 seconds, including its deliberate 30-second timeout.
 
-Local candidate ZIP SHA-256, not a published asset:
+Baseline candidate ZIP SHA-256, not a published asset:
 
 ```text
 33c5e406fe6f3858a2d27b2afdb5ca1e0bb9752fbf035deedfee1c5e47939e10  pi-accanto-0.3.0.zip
@@ -178,6 +178,66 @@ visually. The local Playwright interaction trace is
 ![Local export success](distribution/backup-success.png)
 ![Safe unsupported-backup error](distribution/backup-error.png)
 ![Restored read-only history and sources](distribution/restored-archive.png)
+
+## Independent review corrections
+
+Independent screenshot review of `678a7c2` identified real archive/Settings UX
+issues. This follow-up is limited to presentation and copy. The portable schema,
+stored source IDs and bytes, atomic import, credential exclusions, release
+workflow and normal composer behavior are unchanged. The scripted fixture's
+“Run check” composer text is intentional test data, not a product defect.
+No Delete control was added; deletion remains outside this scoped correction.
+
+| Before | After | Why |
+| --- | --- | --- |
+| Counts below adjacent action buttons, “1 conversations” | Summary above 8px-spaced actions; “Import 1 archived chat”; singular/plural counts | Review the import before committing |
+| Raw roles, fixture tool names and source UUID headings | Normal message styling, collapsed “Archived activity”, source names | History should read like a chat, not a database dump |
+| Citation IDs without usable source navigation | Known bracketed IDs become named, local source links using text nodes | Preserve stored citation mapping without HTML execution or external fetches |
+| PDF output shown as JSON and unlabeled number input | Plain “Page 2 of 2” text and visible “Page [2] of 2” control | Make source reading understandable |
+| Unproven archive bottom clearance | Explicit 40px bottom padding and scroll proof | Final source controls must remain reachable above the footer |
+| “Back up first” could imply profile recovery | Selected chat becomes a read-only archive, excluding settings/keys; not full-profile rollback | State the actual update recovery contract |
+
+Unknown citation text is retained verbatim rather than inventing a mapping.
+Tool text remains accessible by deliberately expanding its activity group.
+Source names are inserted as text, not interpreted as markup, and stored IDs
+remain unchanged. Archived PDF reads now request one physical page at a time;
+the existing PDF reader and live-model tools are not modified.
+The plain-text view retains an explicit partial-page warning when the existing
+text limit is reached; the fixture verifies that warning on a 17,000-character
+page before reading the next physical page.
+
+The existing focused Chromium fixture was extended to assert both one- and
+two-chat confirmation wording, summary/action geometry, button spacing, collapsed
+activity, named citation navigation with original IDs intact, page-two plain PDF
+text, visible page controls, and the actual archive scroll boundary. At the
+bottom it expands the final source, verifies 40px clearance and downloads the
+unchanged PNG bytes. Existing fresh-identity restore, duplicate import, malicious
+input, zero-network and rollback assertions remain.
+
+Final follow-up checks passed:
+
+```sh
+npm run package
+npm run test:portable
+npm run test:release
+npm run release:prepare -- v0.3.0 --verify
+git diff --check
+```
+
+Portable schema checks: 4 passed, plus the real Chromium UI fixture.
+Release checks: 3 passed, including offline publication reruns.
+The complete fixture suite was not repeated for this scoped correction; its
+baseline results above are historical, not a claim of a new full-suite run.
+Regenerated confirmation, archive and bottom screenshots were inspected visually.
+The local interaction trace was regenerated but is not committed.
+
+Follow-up candidate checksum, still not published:
+
+```text
+b86ebd4cb9c7087afdd68179de41d3d2d2115d27e84a043ed6f614f3d069dd8f  pi-accanto-0.3.0.zip
+```
+
+![Expanded final source at the padded archive bottom](distribution/archive-bottom.png)
 
 Linux Playwright is the verified platform. Windows native permission/desktop
 tests were not run. No mutation-test tool is installed in this environment, so

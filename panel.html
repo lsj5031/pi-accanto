@@ -57,7 +57,7 @@
       <section class="portable-section" aria-label="About and backups">
         <h2>About Accanto <span id="installed-version"></span></h2>
         <p><a href="https://github.com/lsj5031/pi-accanto/releases/latest" target="_blank" rel="noopener noreferrer">Open latest release</a></p>
-        <p>Manual update: back up first, stop active work, extract the single ZIP into the same permanent folder, reload in chrome://extensions, then refresh open pages. Reenter session-only keys. Downgrades are unsupported.</p>
+        <p>Manual update: stop active work and save the selected chat as a read-only archive. Extract the single ZIP into the same permanent folder, reload in chrome://extensions, and refresh open pages. The backup excludes settings and keys; it is not a full-profile rollback. Reenter session-only keys. Downgrades are unsupported.</p>
         <div id="portable-controls" hidden>
           <h2>Conversation backup</h2>
           <p>Private content, images and URLs (including private parameters) may contain secrets. Save locally and protect the file. Keys and connection settings are not exported. Open an idle chat here to export it with its selected sources.</p>
@@ -65,8 +65,8 @@
           <label for="backup-file">Restore backup as read-only archived chats</label>
           <input id="backup-file" type="file" accept=".json,application/json">
           <p>Existing chats stay unchanged. Each import creates new copies. Tasks cannot resume; live tabs require reselection. Up to 80 MiB JSON, 48 MiB decoded content, 20 chats and 2,000 messages.</p>
-          <div id="confirm-import" hidden><button type="button" id="import-backup">Import new archives</button><button type="button" id="cancel-import">Cancel</button></div>
           <p id="backup-status" role="status" aria-live="polite"></p>
+          <div id="confirm-import" hidden><button type="button" id="import-backup">Import archived chats</button><button type="button" id="cancel-import">Cancel</button></div>
         </div>
       </section>
       </div>

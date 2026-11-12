@@ -3,6 +3,8 @@ import { importArchives } from './archives.js';
 import { imageDimensions } from './attachments.js';
 import { readPdf } from './pdf-reader.js';
 
+const counted = (count, noun) => `${count} ${noun}${count === 1 ? '' : 's'}`;
+
 export async function inspectPortableSource({ kind, mime, bytes }) {
   if (kind === 'text') {
     const text = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
@@ -61,7 +63,7 @@ export function backupUI({ embedded, currentId, busy, setBusy, snapshot, refresh
         const link = document.createElement('a');
         link.href = url; link.download = 'accanto-conversation.json'; link.click();
         setTimeout(() => URL.revokeObjectURL(url), 60000);
-        status(`Backup download ready: 1 conversation, ${chat.messages.length} messages, ${chat.sources.length} sources. Check browser downloads to confirm it was saved.`);
+        status(`Backup download ready: 1 conversation, ${counted(chat.messages.length, 'message')}, ${counted(chat.sources.length, 'source')}. Check browser downloads to confirm it was saved.`);
       });
     } catch (error) { status(error.message); }
   };
@@ -75,7 +77,8 @@ export function backupUI({ embedded, currentId, busy, setBusy, snapshot, refresh
         if (file.size > BACKUP_LIMITS.bytes) throw new Error('Backup exceeds 80 MiB.');
         pending = await validateBackup(JSON.parse(await file.text()), inspectPortableSource);
         const chats = pending.conversations;
-        status(`Ready: ${chats.length} conversations, ${chats.reduce((n, c) => n + c.messages.length, 0)} messages, ${chats.reduce((n, c) => n + c.sources.length, 0)} sources. Import as new read-only archives?`);
+        status(`Ready: ${counted(chats.length, 'conversation')}, ${counted(chats.reduce((n, c) => n + c.messages.length, 0), 'message')}, ${counted(chats.reduce((n, c) => n + c.sources.length, 0), 'source')}. Import as ${chats.length === 1 ? 'a new read-only archive' : 'new read-only archives'}?`);
+        $('import-backup').textContent = `Import ${counted(chats.length, 'archived chat')}`;
         $('confirm-import').hidden = false;
       });
     } catch { status('Could not validate backup. It may be corrupt, unsupported, or active work is open. No chats changed.'); }
@@ -90,9 +93,9 @@ export function backupUI({ embedded, currentId, busy, setBusy, snapshot, refresh
         const backup = pending, count = backup.conversations.length;
         await importArchives(backup);
         pending = undefined; $('confirm-import').hidden = true;
-        status(`Imported ${count} read-only archived conversations. Existing chats unchanged.`);
+        status(`Imported ${counted(count, 'read-only archived conversation')}. Existing chats unchanged.`);
         try { await refresh(); }
-        catch { status(`Imported ${count} read-only archived conversations. Open a new Accanto tab to refresh History.`); }
+        catch { status(`Imported ${counted(count, 'read-only archived conversation')}. Open a new Accanto tab to refresh History.`); }
       });
     } catch (error) { status(error.message); }
   };
@@ -102,25 +105,52 @@ export function renderArchive(chat) {
   const transcript = document.getElementById('transcript');
   transcript.classList.add('archived');
   transcript.replaceChildren();
+  const references = new Map(chat.sources.map((source, index) => [source.id, { name: source.name, anchor: `archived-source-${index}` }]));
+  const appendText = (element, text) => {
+    let offset = 0;
+    for (const match of text.matchAll(/\[([a-zA-Z0-9_-]+)\]/g)) {
+      const reference = references.get(match[1]);
+      if (!reference) continue;
+      element.append(document.createTextNode(text.slice(offset, match.index)));
+      const link = document.createElement('a');
+      link.textContent = `[${reference.name}]`; link.href = `#${reference.anchor}`;
+      link.onclick = event => { event.preventDefault(); document.getElementById(reference.anchor).scrollIntoView({ block: 'start' }); };
+      element.append(link); offset = match.index + match[0].length;
+    }
+    element.append(document.createTextNode(text.slice(offset)));
+  };
+  let activity, activityCount = 0;
   for (const m of chat.messages) {
+    const tool = m.role === 'toolResult' || m.role === 'assistant' && m.blocks.some(b => b.type === 'text' && b.text.startsWith('Tool: '));
+    if (tool && !activity) {
+      activity = document.createElement('details'); activity.className = 'turn-activity';
+      activity.append(document.createElement('summary')); transcript.append(activity);
+      activityCount = 0;
+    } else if (!tool) activity = undefined;
     const article = document.createElement('article');
-    article.className = m.role;
-    const label = document.createElement('strong'); label.textContent = m.role;
+    article.className = tool ? 'activity' : m.role;
+    const label = document.createElement('strong');
+    label.textContent = tool ? m.role === 'toolResult' ? 'Tool result' : 'Tool request' : m.role === 'user' ? 'You' : 'Pi Accanto';
+    if (!tool) label.className = 'message-label';
     article.append(label);
     for (const b of m.blocks) {
       if (b.type === 'text') {
-        const p = document.createElement('pre'); p.style.whiteSpace = 'pre-wrap'; p.textContent = b.text; article.append(p);
+        const p = document.createElement('pre'); p.style.whiteSpace = 'pre-wrap'; appendText(p, b.text); article.append(p);
       } else {
         const image = document.createElement('img');
         image.alt = 'Archived message image'; image.src = `data:${b.mime};base64,${b.data}`; image.style.maxWidth = '100%'; article.append(image);
       }
     }
-    transcript.append(article);
+    if (tool) {
+      activity.firstChild.textContent = `Archived activity · ${counted(++activityCount, 'record')}`;
+      activity.append(article);
+    } else transcript.append(article);
   }
   const heading = document.createElement('h2'); heading.textContent = 'Archived sources'; transcript.append(heading);
-  for (const source of chat.sources) {
+  for (const [index, source] of chat.sources.entries()) {
     const section = document.createElement('section');
-    const name = document.createElement('p'); name.textContent = `${source.name} [${source.id}]`; section.append(name);
+    section.id = `archived-source-${index}`;
+    const name = document.createElement('p'); name.textContent = source.name; section.append(name);
     if (source.kind === 'tab') {
       const note = document.createElement('p'); note.textContent = `${source.url} · Unavailable reference. Reselect the tab in a new chat.`; section.append(note);
     } else {
@@ -133,6 +163,8 @@ export function renderArchive(chat) {
       section.append(button);
       if (source.kind === 'pdf') {
         const page = document.createElement('input'); page.type = 'number'; page.min = '1'; page.max = String(source.pages); page.value = '1'; page.setAttribute('aria-label', `Physical page of ${source.name}`);
+        const pageControl = document.createElement('label'); pageControl.className = 'archive-page-control';
+        pageControl.append('Page ', page, ` of ${source.pages}`);
         const read = document.createElement('button'); read.type = 'button'; read.textContent = 'Read PDF page text';
         const output = document.createElement('pre'); output.style.whiteSpace = 'pre-wrap'; output.setAttribute('role', 'status');
         read.onclick = async () => {
@@ -140,12 +172,12 @@ export function renderArchive(chat) {
           try {
             const n = Number(page.value);
             if (!Number.isInteger(n) || n < 1 || n > source.pages) throw new Error('Choose a valid physical page.');
-            const result = await readPdf(decode(source.data, 16 * 1024 * 1024), n, AbortSignal.timeout(30000));
-            output.textContent = JSON.stringify(result, null, 2);
+            const result = await readPdf(decode(source.data, 16 * 1024 * 1024), n, AbortSignal.timeout(30000), { page_count: 1 });
+            output.textContent = result.pages.map(page => `Page ${page.page} of ${result.totalPages}\n${page.text || 'No native text on this page.'}${page.truncated ? '\nText limit reached; this page is only partially shown.' : ''}`).join('\n\n');
           } catch (error) { output.textContent = error.message; }
           finally { read.disabled = false; }
         };
-        section.append(page, read, output);
+        section.append(pageControl, read, output);
       }
       if (source.kind === 'image') {
         const details = document.createElement('details'), summary = document.createElement('summary'), image = document.createElement('img');
