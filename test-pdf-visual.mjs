@@ -6,7 +6,7 @@ import { resolve } from 'node:path';
 import { performance } from 'node:perf_hooks';
 import { build } from 'esbuild';
 import { chromium } from 'playwright';
-import { pdf } from './test/pdf-fixtures.mjs';
+import { pdf, largeScanPdf } from './test/pdf-fixtures.mjs';
 import { browserOptions, artifactDirectory } from './test/browser.mjs';
 
 const artifacts = artifactDirectory('pdf-visual');
@@ -99,6 +99,65 @@ try {
   const later = await read(9);
   assert.deepEqual(later.noTextPages, [9, 10, 11, 12, 13, 15]);
   assert.match(later.pages.find(page => page.page === 14).text, /Partial native caption/);
+  assert.deepEqual(native.imagePages, [2, 3, 4, 5, 6, 7, 8]);
+  assert.deepEqual(later.imagePages, [9, 10, 11, 12, 13, 14]);
+  assert.equal(later.pages.find(page => page.page === 14).imageContent.present, true);
+  assert.match(later.note, /Native text may be only headers/);
+  async function readBytes(bytes, options = {}) {
+    return panel.evaluate(async ({ bytes, options }) => {
+      try {
+        return await (await import('./visual-test/pdf-reader.js')).readPdf(
+          Uint8Array.from(atob(bytes), c => c.charCodeAt(0)), 1, undefined, options);
+      } catch (error) { return { error: error.message }; }
+    }, { bytes: bytes.toString('base64'), options });
+  }
+  const largeScan = largeScanPdf();
+  assert.ok(largeScan.length < 200000, 'Highly compressed 49MP bilevel input');
+  const largeNative = await readBytes(largeScan);
+  assert.deepEqual(largeNative.noTextPages, []);
+  assert.deepEqual(largeNative.imagePages, [1]);
+  assert.match(largeNative.pages[0].text, /Native header/);
+  const largeStart = performance.now();
+  const largeVisual = await readBytes(largeScan, { visual: true, vision: true, page_count: 1 });
+  const largeSeconds = (performance.now() - largeStart) / 1000;
+  assert.equal(largeVisual.error, undefined);
+  assert.ok(performance.now() - largeStart < 15000);
+  const stripePixels = await panel.evaluate(async image => {
+    const bitmap = await createImageBitmap(new Blob([Uint8Array.from(atob(image.data), c => c.charCodeAt(0))]));
+    const c = document.createElement('canvas'); c.width = bitmap.width; c.height = bitmap.height;
+    const ctx = c.getContext('2d'); ctx.drawImage(bitmap, 0, 0); bitmap.close();
+    const a = ctx.getImageData(c.width / 2, c.height * .2, 1, c.height * .6).data;
+    let black = 0, white = 0;
+    for (let i = 0; i < a.length; i += 4) { if (a[i] < 30) black++; if (a[i] > 245) white++; }
+    return { black, white };
+  }, largeVisual.images[0]);
+  assert.ok(stripePixels.black > 200 && stripePixels.white > 200, 'Actual decoded CCITT body, not native header pixels');
+  // Largest whole row below the 64 Mi-pixel gate and the next row above it.
+  const nearStart = performance.now();
+  const nearLimit = await readBytes(largeScanPdf({ height: 8738 }), { visual: true, vision: true, page_count: 1 });
+  const nearSeconds = (performance.now() - nearStart) / 1000;
+  assert.equal(nearLimit.error, undefined);
+  assert.ok(nearSeconds < 15);
+  const overLimit = await readBytes(largeScanPdf({ height: 8739 }), { visual: true, vision: true, page_count: 1 });
+  assert.match(overLimit.error, /source budget exceeded/);
+  const aggregate = await readBytes(largeScanPdf({ copies: 2 }), { visual: true, vision: true, page_count: 1 });
+  assert.match(aggregate.error, /source budget exceeded/);
+  const masked = await readBytes(largeScanPdf({ softMask: true }), { visual: true, vision: true, page_count: 1 });
+  assert.match(masked.error, /could not be decoded safely/, 'Soft masks share the aggregate decoded budget');
+  const form = await readBytes(largeScanPdf({ formGroup: true }));
+  assert.deepEqual(form.imagePages, [1], 'Transparency-form images remain visible in the display list');
+  const formAggregate = await readBytes(largeScanPdf({ formGroup: true, copies: 2 }), { visual: true, vision: true, page_count: 1 });
+  assert.match(formAggregate.error, /source budget exceeded/, 'Separate transparency forms share the page budget');
+  const hostileParameters = await readBytes(largeScanPdf({ width: 2560, height: 8, decodeRows: 1000000000 }), { visual: true, vision: true, page_count: 1 });
+  assert.match(hostileParameters.error, /could not be decoded safely/, 'CCITT decode parameters cannot bypass dictionary pixel limits');
+  assert.match((await readBytes(largeScanPdf({ height: 8739 }))).error, /source budget exceeded/, 'Native metadata cannot hide an omitted over-budget image');
+  const repeated = await readBytes(largeScanPdf({ copies: 12, sameImage: true }));
+  assert.deepEqual(repeated.imagePages, [1], 'Repeated cached XObjects remain detectable without charging twelve decodes');
+  const grouped = await readBytes(pdf([{ width: 2, height: 2, rgb: Buffer.alloc(12), repeat: 12, lines: ['Caption beside repeated inline diagrams.'] }]));
+  assert.deepEqual(grouped.imagePages, [1], 'Optimized inline groups remain visible to image detection');
+  assert.match(grouped.pages[0].text, /Caption/);
+  const invalidInline = pdf([{ width: 2, height: 2, rgb: Buffer.alloc(12) }]).toString().replace('/BPC 8', '/BPC 0');
+  assert.match((await readBytes(Buffer.from(invalidInline), { visual: true, vision: true, page_count: 1 })).error, /could not be decoded safely/, 'Inline decode failures cannot return successful blank pages');
   const visual = { visual: true, vision: true, page_count: 2 };
   const first = await read(1, visual);
   assert.equal(first.error, undefined);
@@ -212,6 +271,23 @@ try {
   assert.equal(imageBlocks(scanRequest).length, 6);
   assert.equal(imageBlocks(scanRequest).at(-1).image_url.url, `data:image/jpeg;base64,${first.images[1].data}`);
   assert.match(JSON.stringify(scanRequest), /pure-scan.pdf; physical page 1/);
+  // High-resolution scans must cross both production adapters, not only the
+  // reader import. The main source stays bound to the same local URL/document.
+  const savedMixed = mixed;
+  mixed = largeScan;
+  try {
+    const largeMain = await run('inspect_tab', { visual: true, page_count: 1 });
+    assert.equal(imageBlocks(largeMain).at(-1).image_url.url, `data:image/jpeg;base64,${largeVisual.images[0].data}`);
+    assert.match(JSON.stringify(largeMain), /imageContent/);
+    assert.match(JSON.stringify(largeMain), /physical page 1/);
+  } finally { mixed = savedMixed; }
+  await panel.locator('#attachment-files').setInputFiles([{ name: 'large-scan.pdf', mimeType: 'application/pdf', buffer: largeScan }]);
+  await panel.waitForFunction(() => !document.querySelector('#attachment-list [data-state=loading]'));
+  const largeId = await panel.locator('#attachment-list li').filter({ hasText: 'large-scan.pdf' }).getAttribute('data-source-id');
+  const largeAttached = await run('read_source', { source_id: largeId, visual: true, page_count: 1 });
+  assert.equal(imageBlocks(largeAttached).at(-1).image_url.url, `data:image/jpeg;base64,${largeVisual.images[0].data}`);
+  assert.match(JSON.stringify(largeAttached), /large-scan.pdf; physical page 1/);
+  assert.match(JSON.stringify(largeAttached), /Native header/);
   await panel.screenshot({ path: resolve(artifacts, 'compact-visual-result.png') });
   await worker.evaluate(async () => {
     const { modelConnection } = await chrome.storage.local.get('modelConnection');
@@ -226,41 +302,49 @@ try {
   }
   await panel.reload(); await ready();
   assert.equal(await panel.locator('#attachment-list li').filter({ hasText: 'pure-scan.pdf' }).getAttribute('data-state'), 'ready');
-  // Cancel precisely after canvas allocation, while PDF.js rendering is pending.
+  // Cancel during inspection-worker startup and after canvas allocation.
   const races = await panel.evaluate(async bytes => {
     const { openAttachments } = await import('./visual-test/attachments.js');
     let owns = true;
     const collection = await openAttachments({ database: 'visual-races', session: 'test', owns: () => owns, vision: () => true, changed() {} });
     const results = [];
-    for (const mode of ['stop', 'remove', 'ownership', 'signal']) {
+    for (const stage of ['inspection', 'canvas']) for (const mode of ['stop', 'remove', 'ownership', 'signal']) {
       await collection.addFiles([new File([Uint8Array.from(atob(bytes), c => c.charCodeAt(0))], 'raster.pdf')]);
       const id = collection.list().at(-1).id;
       const abort = new AbortController();
       const create = document.createElement.bind(document);
       const canvases = [];
+      const WorkerClass = window.Worker;
+      let terminated = 0;
       let triggered = false;
+      const trigger = () => {
+        if (triggered) return;
+        triggered = true;
+        queueMicrotask(() => {
+          if (mode === 'stop') collection.cancel();
+          if (mode === 'remove') void collection.remove(id);
+          if (mode === 'ownership') owns = false;
+          if (mode === 'signal') abort.abort();
+        });
+      };
+      if (stage === 'inspection') window.Worker = class extends WorkerClass {
+        constructor(...args) { super(...args); trigger(); }
+        terminate() { terminated++; super.terminate(); }
+      };
       document.createElement = function(tag, ...args) {
         const node = create(tag, ...args);
         if (tag === 'canvas') {
           canvases.push(node);
-          if (!triggered) {
-            triggered = true;
-            queueMicrotask(() => {
-              if (mode === 'stop') collection.cancel();
-              if (mode === 'remove') void collection.remove(id);
-              if (mode === 'ownership') owns = false;
-              if (mode === 'signal') abort.abort();
-            });
-          }
+          if (stage === 'canvas') trigger();
         }
         return node;
       };
       let error;
       try { await collection.tools.find(tool => tool.name === 'read_source').execute({ source_id: id, visual: true, page_count: 1 }, {}, { abortSignal: abort.signal }); }
       catch (caught) { error = caught.message; }
-      finally { document.createElement = create; owns = true; }
+      finally { document.createElement = create; window.Worker = WorkerClass; owns = true; }
       await new Promise(resolve => setTimeout(resolve, 100));
-      results.push({ mode, triggered, error, released: canvases.every(canvas => canvas.width === 0 && canvas.height === 0) });
+      results.push({ stage, mode, triggered, error, terminated, released: canvases.every(canvas => canvas.width === 0 && canvas.height === 0) });
       await collection.clear();
     }
     return results;
@@ -269,6 +353,7 @@ try {
     assert.equal(race.triggered, true);
     assert.ok(race.error, `${race.mode} must discard render output`);
     assert.equal(race.released, true);
+    if (race.stage === 'inspection') assert.ok(race.terminated > 0, 'Inspection cancellation must terminate its worker');
   }
   const timeout = await panel.evaluate(async origin => {
     const raf = window.requestAnimationFrame;
@@ -324,7 +409,7 @@ try {
   assert.match(await panel.locator('article.toolResult').last().textContent(), /changed while reading/);
   assert.deepEqual(errors, []);
   const elapsedSeconds = (performance.now() - start) / 1000;
-  await writeFile(resolve(artifacts, 'report.json'), JSON.stringify({ fixtureOnly: true, elapsedSeconds, pixels, races, bounded, timeout, outboundRequests: requests.length, bounds: first.pages.map(page => page.image), inspected }, null, 2));
+  await writeFile(resolve(artifacts, 'report.json'), JSON.stringify({ fixtureOnly: true, elapsedSeconds, pixels, races, bounded, timeout, highResolution: { sourcePixels: 7680 * 6400, compressedPdfBytes: largeScan.length, largeSeconds, nearLimitPixels: 7680 * 8738, nearSeconds, stripePixels, output: largeVisual.pages[0].image }, outboundRequests: requests.length, bounds: first.pages.map(page => page.image), inspected }, null, 2));
   console.log(`PASS: mixed/scanned PDF rendering, 15-page pagination, labeled adapter images (main/file), Code Mode direct-call guidance, text-only, cancellation/removal/ownership, 30s timeout, cleanup (${elapsedSeconds.toFixed(2)}s).`);
 } finally {
   await browser?.close();
