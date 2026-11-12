@@ -1,6 +1,6 @@
 {
   "name": "pi-accanto",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "An extension-only browser assistant with page evidence, web research and sandboxed Code Mode.",
   "license": "MIT",
   "engines": {
@@ -28,7 +28,10 @@
     "test:native": "node test-native.mjs",
     "test:shortcuts": "node test-shortcuts.mjs",
     "test:attachments": "node test-attachments.mjs",
-    "test:fixtures": "npm test && npm run test:conversations && npm run test:pdf && npm run test:research && npm run test:companion && npm run test:attachments"
+    "test:fixtures": "npm test && npm run test:conversations && npm run test:pdf && npm run test:research && npm run test:companion && npm run test:attachments && npm run test:portable",
+    "release:prepare": "node release.mjs",
+    "test:portable": "node --test test-portable.mjs && node test-backup-ui.mjs",
+    "test:release": "node --test test-release.mjs"
   },
   "dependencies": {
     "@earendil-works/chord": "1.4.0",

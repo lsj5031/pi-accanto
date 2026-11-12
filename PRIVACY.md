@@ -8,6 +8,28 @@ to those services.
 
 ## What leaves the browser
 
+### Portable backups
+
+An explicit extension-tab action saves backups locally. No backup service,
+external upload or automatic version check is used; the latest-release link opens
+GitHub only when clicked. Backups select history text/native images, readable
+tool text, names/citations and selected local file bytes. Stored model/search
+keys, connection settings, headers, endpoint credentials, live tasks, leases and
+browser document/session identities are excluded structurally.
+
+This does **not** make content secret-free: messages, tool outputs, files and URLs
+can include secrets or private query parameters. JSON backups are unencrypted.
+Protect them like the originals; never attach private backups to public issues.
+
+Validated restores add fresh, read-only local archives atomically. Existing chats
+are unchanged. No tasks, tool calls, live tabs or network requests are revived.
+Repeated imports create separate copies. Resetting a live chat does not erase
+archives or downloaded files. Clear extension storage/remove the extension to
+delete all local archives; delete backup downloads separately. Source bytes can
+be saved locally and explicitly attached to a new live chat.
+
+### Provider requests
+
 | Action | Recipient | Data |
 | --- | --- | --- |
 | Connect a model | Your configured API server | A model-catalog request with that server's API key: `/models` for OpenAI formats, `/v1/models/{id}` for Anthropic, or `/models/{id}` for Gemini. No chat message is sent by this check. |

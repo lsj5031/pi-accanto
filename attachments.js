@@ -18,7 +18,7 @@ async function abortable(work, signal) {
 }
 
 // Reject decompression bombs from headers before asking the browser to decode.
-function imageDimensions(bytes, mime) {
+export function imageDimensions(bytes, mime) {
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   const u24 = offset => bytes[offset] + (bytes[offset + 1] << 8) + (bytes[offset + 2] << 16);
   let width, height;
@@ -122,6 +122,8 @@ export async function openAttachments({ database, session, owns, vision, changed
       const controller = new AbortController();
       pending.set(record.id, controller);
       try {
+        await navigator.locks.request('accanto-portable-operation', { mode: 'shared', ifAvailable: true }, async lock => {
+        if (!lock) throw new Error('Wait for backup or restore to finish before importing sources.');
         if (generation !== batch) controller.abort();
         check(record, controller.signal);
         const bytes = new Uint8Array(await abortable(file.arrayBuffer(), controller.signal));
@@ -157,6 +159,7 @@ export async function openAttachments({ database, session, owns, vision, changed
         record.state = 'ready';
         // Check inside the serialized write too: removal may have won meanwhile.
         await persist(store => records.get(record.id) === record && owns() ? store.put(record) : undefined);
+        });
       } catch (error) {
         if (records.get(record.id) === record) {
           record.state = 'error'; record.note = controller.signal.aborted ? 'Import cancelled. Remove and choose the file again.' : `Could not import: ${error.message}`;
@@ -254,5 +257,14 @@ export async function openAttachments({ database, session, owns, vision, changed
   chrome.tabs.onUpdated.addListener(invalidateTab);
   chrome.tabs.onRemoved.addListener(tabId => invalidateTab(tabId));
   notify();
-  return { tools, list, addFiles, addTab, remove, cancel, flush: () => writes, clear: async () => { cancel(); records.clear(); notify(); await persist(store => store.clear()); } };
+  async function snapshot() {
+    if (!owns() || pending.size || reads.size) throw new Error('Stop active source imports and reads before exporting.');
+    await writes;
+    return [...records.values()].map(record => {
+      if (record.kind === 'tab') return { id: record.id, kind: 'tab', name: record.name, url: record.url };
+      if (record.state !== 'ready' || !record.blob) throw new Error('Remove failed or incomplete sources before exporting.');
+      return { id: record.id, kind: record.kind, name: record.name, mime: record.mime, blob: record.blob };
+    });
+  }
+  return { tools, list, snapshot, working: () => Boolean(pending.size || reads.size || [...records.values()].some(record => record.state === 'loading')), addFiles, addTab, remove, cancel, flush: () => writes, clear: async () => { cancel(); records.clear(); notify(); await persist(store => store.clear()); } };
 }

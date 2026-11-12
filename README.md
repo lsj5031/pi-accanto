@@ -84,8 +84,8 @@ You'll need **Chrome** and an
 servers are supported. Your provider may charge for use; a chat subscription
 doesn't include an API key.
 
-This is an early release installed as an unpacked extension. There is no Chrome
-Web Store installer yet. Use a ready-built download when available, or build
+This is an early release installed as an unpacked extension, distributed through
+GitHub Releases, not the Chrome Web Store. Use a ready-built download when available, or build
 from source with **Node.js 22 or later**. No separate server or CLI runs while
 you use Accanto.
 
@@ -93,17 +93,23 @@ you use Accanto.
 
 **Ready-built download (no Node.js required):**
 
-1. Open [Build and fixture tests](https://github.com/lsj5031/pi-accanto/actions/workflows/ci.yml)
-   and choose a successful run on **main**. Download its **extension-download**
-   artifact (GitHub sign-in is required; artifacts expire).
-2. Extract the artifact, then extract the **`pi-accanto-VERSION.zip`** inside it
-   into a permanent folder.
+1. Open [Latest release](https://github.com/lsj5031/pi-accanto/releases/latest).
+   Download **`pi-accanto-VERSION.zip`** and **`SHA256SUMS`** from its assets.
+   Releases remain available until the repository owner removes them.
+2. Verify the ZIP checksum, then extract it once into a permanent folder.
+   On Linux use `sha256sum -c SHA256SUMS`; on macOS use
+   `shasum -a 256 -c SHA256SUMS`. On Windows use
+   `Get-FileHash .\pi-accanto-VERSION.zip -Algorithm SHA256` in PowerShell and
+   compare the complete hash with `SHA256SUMS`. Checksums detect corruption,
+   not a compromised publisher.
 3. Open `chrome://extensions`, enable **Developer mode**, choose **Load unpacked**,
    and select the extracted folder containing **`manifest.json`**.
 4. Open a normal webpage and click Pi Accanto in Chrome's extensions menu.
 
 GitHub's **Source code (zip)** downloads are not ready-built extensions.
-If no build artifact is available, use the source build below.
+If no release is available, use the source build below. Developers can still use
+successful CI **extension-download** artifacts, which expire and require GitHub
+sign-in. Those have an extra artifact ZIP wrapper to extract first.
 
 **Build from source:**
 
@@ -124,10 +130,39 @@ If no build artifact is available, use the source build below.
 Select **dist**, not the project folder. Loading the source folder shows build
 instructions rather than starting the assistant.
 
-Keep the installed folder where it is. To update a download, extract the new
+Before updating, save backups of your chats (below) and stop all active work.
+Settings shows the installed version and an **Open latest release** link.
+Nothing checks for updates or downloads code in the background.
+Keep the installed folder where it is. To update a download, verify its checksum and extract the new
 extension ZIP into that same folder. For source installs, pull the latest source
 and rebuild. Then reload the extension at `chrome://extensions` and refresh your
-webpages.
+webpages. Reenter session-only keys after reloading. Schemas may evolve;
+downgrades are unsupported. Keep a previous backup, not a promise of downgrade recovery.
+
+### Local conversation backups
+
+Open the desired chat **in a tab**, stop work and close other Accanto chat panels.
+In Settings choose **Save this chat backup**. Each JSON file contains that chat's
+history (including native message images and readable tool text), a plain-text
+transcript, citation/source names and all currently selected local PDF/text/image
+bytes. Repeat for other chats. Removed files are not recovered; excerpts already
+in history remain. Incomplete/failed attachments must be removed before export.
+
+In extension-tab Settings, choose the backup file, review the counts, then confirm
+**Import new archives**. Restoration is atomic and adds fresh, read-only archived
+chats to History without overwriting existing chats. Reimporting creates another
+copy. Open an archive to read history, text sources and PDF pages, view images or
+save original file bytes locally. Files can be attached manually to a new live chat.
+Tasks cannot resume. Live tabs are unavailable references that require reselection.
+Model/search keys, connection settings, active runs, tab identities and ownership
+leases are not transferred. Reconfigure your model and permissions yourself.
+
+Backups contain private content and URLs, potentially including private parameters
+or secrets you put in messages/files. They are not encrypted. Save them locally,
+protect them and do not upload them to issues. Limits: 80 MiB JSON, 48 MiB total
+decoded content, 20 chats, 2,000 messages, 10 sources per chat, existing 16 MiB
+file / 2 MiB text / 16-megapixel image limits. Schema v1 is checked completely
+before any import writes; unsupported versions are rejected without changes.
 
 **Stable extension identity:** builds use the ID
 `iojliefpiallbakabkahmiaadgmlfjkf`, regardless of their installation folder.

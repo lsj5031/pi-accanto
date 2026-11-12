@@ -15,7 +15,8 @@ const worker = await build({
 await copyFile('node_modules/quickjs-wasi/quickjs.wasm', 'dist/quickjs.wasm');
 await copyFile('node_modules/quickjs-wasi/LICENSE', 'dist/QUICKJS-WASI-LICENSE');
 await copyFile('node_modules/basecoat-css/dist/basecoat.cdn.min.css', 'dist/basecoat.css');
-for (const file of ['panel.html', 'panel.css', 'background.js', 'companion-host.js', 'companion-bridge.js']) {
+await build({ entryPoints: ['background.js'], bundle: true, format: 'esm', platform: 'browser', outfile: 'dist/background.js' });
+for (const file of ['panel.html', 'panel.css', 'companion-host.js', 'companion-bridge.js']) {
   await copyFile(file, `dist/${file}`);
 }
 const manifest = JSON.parse(await readFile('manifest.json', 'utf8'));

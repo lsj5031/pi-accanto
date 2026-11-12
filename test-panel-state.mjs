@@ -51,12 +51,13 @@ for (const stage of ['permission', 'attachment', 'identity', 'page-context', 'su
       context: {}, saveDraft: async () => {}, reportDraftError() {},
       showAttachment: async () => {}, statusChanged() {}, reloadPanel() {},
       connectionStatus() {}, modelId: 'fixture', crypto: globalThis.crypto,
+      navigator: { locks: { request: async (_name, _options, run) => run({ name: 'fixture' }) } },
     };
     const run = await new AsyncFunction('deps', `
       const { $, document, refreshModelAccess, attachCurrent, inTarget, pageIdentity, pagePassages,
         root, codeMode, context, saveDraft, reportDraftError, showAttachment, statusChanged,
-        reloadPanel, connectionStatus, modelId, crypto, attachments } = deps;
-      let busy = false, ownsConversation = true, submissionController;
+        reloadPanel, connectionStatus, modelId, crypto, attachments, navigator } = deps;
+      let busy = false, portableBusy = false, ownsConversation = true, submissionController;
       const scripted = false, apiKey = 'fixture', webResearch = false, reconnectPending = false;
       const attachment = ${stage !== 'attachment'}, useConversationTab = false, missingModelAccess = 'Missing access';
       ${handlers}

@@ -42,7 +42,27 @@ Successful CI runs upload the ZIP as the **extension-download** artifact after
 fixture checks pass. Download and extract both the artifact wrapper and the
 extension ZIP before using Chrome's **Load unpacked**. The source manifest opens
 build instructions; the build removes that popup so the toolbar opens Accanto.
-This workflow does not publish a GitHub release or a Chrome Web Store listing.
+This developer workflow does not publish releases. The separate tag-triggered
+release workflow publishes a directly installable ZIP and SHA256SUMS only after
+all required gates. There is no Chrome Web Store integration.
+
+For a release, follow [distribution verification and operator steps](docs/verification/distribution.md).
+`npm run release:prepare -- v0.3.0` validates versions and the actual packaged
+ZIP offline and writes checksums/release notes. Add `--verify` to check those
+files without writing. Release tooling requires Linux/macOS `zip` and `unzip`;
+the automated publisher runs on Linux. Never change the stable manifest key.
+Maintainers must protect `main`, `v*` tags, and the `release` environment. Only a
+reviewed main commit may be tagged. A tag workflow's code runs before ancestry
+checks, so ancestry alone is not a substitute for tag and environment protection.
+
+`npm run test:portable` adds pure schema/allowlist boundaries and real Chromium
+export/restore under a fresh extension identity, with generated data and no paid
+model. Archives use a separate version-1 IndexedDB domain store and atomic
+imports; they never import Pi Durable task/lease documents. Export reads through
+`Conversation.entries()` and the attachment collection's snapshot API, not raw
+durable database internals. Backups deliberately restore readable archived chats,
+not executable task state. `npm run test:release` checks the real packaged ZIP
+and failure cases. Both are CI gates; portable tests are in `test:fixtures`.
 
 The manifest's `key` is a public RSA key that pins the unpacked extension ID to
 `iojliefpiallbakabkahmiaadgmlfjkf`. Preserve it across builds and releases.

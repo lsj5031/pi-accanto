@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAyVR4X25Gv9WC/s0txgH1h22o4fh4JzZRuT3a0ycspDkfI+Pt/0qB28kRkVakWm1/tNjU58vryu7J1sDO3IRDme5ndfgmBbXXGH495cG9QtZNV6xsUDjiTCdNsD4zcHTnm6mCPfinlzA7Mk8MkhR0qe3YiM/YuCBFTtPMx/zZLbSM6xs3dMao8wuQMOfObQoM2OgkOYrl3loaj/+H+UXDf6CnFzCO7vUW6fKU7z9w9i6dyBiGdiHSOUjN4U30K3nHhgdx52r0eVdmt5B6WMKTRZ5e1UNDD4Iiy+pwijnsKpmoh6GECifzf61ATgjk257X0P9Lf6IHl0IrsB4JeNKDqwIDAQAB",
   "name": "Pi Accanto",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "An assistant beside your browser tab, with page and PDF reading, web research, and sandboxed Code Mode.",
   "permissions": ["tabs", "activeTab", "scripting", "storage"],
   "host_permissions": ["file:///*", "https://mcp.exa.ai/*"],
@@ -18,7 +18,7 @@
     "enlarge-chat": { "suggested_key": { "default": "Alt+Shift+D" }, "description": "Enlarge or restore Accanto" },
     "open-chat-tab": { "suggested_key": { "default": "Alt+Shift+S" }, "description": "Open the current Accanto chat in a tab" }
   },
-  "background": { "service_worker": "background.js" },
+  "background": { "service_worker": "background.js", "type": "module" },
   "web_accessible_resources": [{ "resources": ["companion.html"], "matches": ["http://*/*", "https://*/*"] }],
   "content_security_policy": { "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'; worker-src 'self'; connect-src 'self' http: https: file:" }
 }

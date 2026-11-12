@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { access, mkdir, readFile, readdir, rm } from 'node:fs/promises';
+import { access, mkdir, readFile, readdir, rm, utimes } from 'node:fs/promises';
 import { resolve } from 'node:path';
 
 const dist = resolve('dist');
@@ -27,6 +27,19 @@ if (process.platform === 'win32') {
     env: { ...process.env, ACCANTO_DIST: dist, ACCANTO_ARCHIVE: archive }, stdio: 'inherit',
   });
 } else {
-  execFileSync('zip', ['-q', '-r', archive, ...await readdir(dist)], { cwd: dist, stdio: 'inherit' });
+  const files = [];
+  async function walk(prefix = '') {
+    for (const entry of (await readdir(resolve(dist, prefix), { withFileTypes: true })).sort((a, b) => a.name.localeCompare(b.name, 'en'))) {
+      const name = `${prefix}${entry.name}`;
+      if (entry.isSymbolicLink()) throw new Error('Package must not contain symlinks.');
+      if (entry.isDirectory()) await walk(`${name}/`);
+      else {
+        await utimes(resolve(dist, name), new Date('2020-01-01T00:00:00Z'), new Date('2020-01-01T00:00:00Z'));
+        files.push(name);
+      }
+    }
+  }
+  await walk();
+  execFileSync('zip', ['-X', '-q', archive, ...files], { cwd: dist, stdio: 'inherit', env: { ...process.env, TZ: 'UTC' } });
 }
 console.log(`Installable extension: ${archive}`);

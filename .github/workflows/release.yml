@@ -1,0 +1,94 @@
+name: Release extension
+on:
+  push:
+    tags: ['v*']
+permissions:
+  contents: read
+concurrency:
+  group: extension-release-publication
+  cancel-in-progress: false
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Require tag commit on main
+        run: git merge-base --is-ancestor HEAD origin/main
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npm run package
+      - run: npm run release:prepare -- "$GITHUB_REF_NAME"
+      - run: npm run test:release
+      - run: npm run test:distribution
+      - run: npm run test:permissions
+      - run: npm run test:panel-state
+      - run: npm run test:identity
+      - run: npm run test:fixtures
+      - run: npm run release:prepare -- "$GITHUB_REF_NAME" --verify
+      - uses: actions/upload-artifact@v4
+        with:
+          name: verified-release
+          path: |
+            artifacts/pi-accanto-*.zip
+            artifacts/SHA256SUMS
+            artifacts/RELEASE_NOTES.md
+          if-no-files-found: error
+  publish:
+    needs: verify
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    environment: release
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: verified-release
+          path: assets
+      - name: Verify assets and publish without overwriting
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd assets
+          sha256sum --strict -c SHA256SUMS
+          test "$(find . -maxdepth 1 -name '*.zip' | wc -l)" -eq 1
+          tag="$GITHUB_REF_NAME"
+          if ! gh release view "$tag" --json isDraft > release.json; then
+            gh release create "$tag" --verify-tag --draft --title "Pi Accanto $tag" --notes-file RELEASE_NOTES.md
+          fi
+          # An existing asset must match byte-for-byte. Never use --clobber.
+          # Never publish an unrelated file left in an existing draft.
+          gh release view "$tag" --json assets --jq '.assets[].name' > asset-names
+          while IFS= read -r asset; do
+            case "$asset" in
+              "pi-accanto-${tag#v}.zip"|SHA256SUMS) ;;
+              *) echo "Unexpected release asset. Review the draft manually." >&2; exit 1 ;;
+            esac
+          done < asset-names
+          mkdir remote
+          gh release download "$tag" --dir remote || true
+          draft="$(gh release view "$tag" --json isDraft --jq .isDraft)"
+          for file in pi-accanto-*.zip SHA256SUMS; do
+            if test -f "remote/$file"; then
+              cmp "$file" "remote/$file"
+            else
+              test "$draft" = true
+              gh release upload "$tag" "$file"
+            fi
+          done
+          # Verify bytes from GitHub before making the draft public.
+          mkdir checked
+          gh release download "$tag" --dir checked
+          cmp SHA256SUMS checked/SHA256SUMS
+          (cd checked && sha256sum --strict -c SHA256SUMS)
+          if test "$draft" = true; then gh release edit "$tag" --draft=false; fi

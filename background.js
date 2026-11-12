@@ -1,3 +1,5 @@
+import { listArchives } from './archives.js';
+
 chrome.action.onClicked.addListener(openAccanto);
 chrome.commands.onCommand.addListener((command, tab) => { void handleCommand(command, tab); });
 
@@ -120,6 +122,9 @@ chrome.runtime.onMessage.addListener((message, sender, reply) => {
     const browserSession = session.browserSession || crypto.randomUUID();
     const mapping = session.tabConversations || {};
     const { conversations = {} } = await chrome.storage.local.get('conversations');
+    const archives = await listArchives();
+    const archived = archives.find(chat => chat.id === message.id);
+    if (archived) return { id: archived.id, browserSession, conversations: [...Object.values(conversations), ...archives.map(({ id, title }) => ({ id, title: `${title} · Archive` }))] };
     if (!Object.keys(conversations).length) {
       const databases = await indexedDB.databases();
       if (databases.some(database => ['pi-tab-live-v1', 'pi-tab-prototype-v1'].includes(database.name))) {
@@ -143,7 +148,7 @@ chrome.runtime.onMessage.addListener((message, sender, reply) => {
     if (tab) mapping[tabId] = id;
     await chrome.storage.local.set({ conversations });
     await chrome.storage.session.set({ browserSession, tabConversations: mapping });
-    return { id, tabId: tab?.id, browserSession, conversations: Object.values(conversations) };
+    return { id, tabId: tab?.id, browserSession, conversations: [...Object.values(conversations), ...archives.map(({ id, title }) => ({ id, title: `${title} · Archive` }))] };
   });
   updates.then(reply, error => reply({ error: error.message }));
   updates = updates.catch(() => {});

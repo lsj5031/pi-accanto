@@ -54,6 +54,21 @@
         <details class="advanced"><summary>Developer tools</summary><label for="mode">Mode</label><select id="mode"><option value="live">AI model</option><option value="scripted">Offline scripted check</option></select></details>
       </form>
       <div id="search-settings-slot"></div>
+      <section class="portable-section" aria-label="About and backups">
+        <h2>About Accanto <span id="installed-version"></span></h2>
+        <p><a href="https://github.com/lsj5031/pi-accanto/releases/latest" target="_blank" rel="noopener noreferrer">Open latest release</a></p>
+        <p>Manual update: back up first, stop active work, extract the single ZIP into the same permanent folder, reload in chrome://extensions, then refresh open pages. Reenter session-only keys. Downgrades are unsupported.</p>
+        <div id="portable-controls" hidden>
+          <h2>Conversation backup</h2>
+          <p>Private content, images and URLs (including private parameters) may contain secrets. Save locally and protect the file. Keys and connection settings are not exported. Open an idle chat here to export it with its selected sources.</p>
+          <button type="button" id="export-backup">Save this chat backup</button>
+          <label for="backup-file">Restore backup as read-only archived chats</label>
+          <input id="backup-file" type="file" accept=".json,application/json">
+          <p>Existing chats stay unchanged. Each import creates new copies. Tasks cannot resume; live tabs require reselection. Up to 80 MiB JSON, 48 MiB decoded content, 20 chats and 2,000 messages.</p>
+          <div id="confirm-import" hidden><button type="button" id="import-backup">Import new archives</button><button type="button" id="cancel-import">Cancel</button></div>
+          <p id="backup-status" role="status" aria-live="polite"></p>
+        </div>
+      </section>
       </div>
     </details>
     <button type="button" id="enlarge" class="icon-button" aria-label="Enlarge chat" aria-pressed="false" title="Enlarge or restore" hidden><svg viewBox="0 0 20 20"><path d="M7 3H3v4M13 3h4v4M17 13v4h-4M7 17H3v-4"/></svg></button>

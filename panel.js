@@ -20,6 +20,8 @@ import DOMPurify from 'dompurify';
 import { readPdf, pdfOutput, PDF_OPTIONS, PDF_HELP } from './pdf-reader.js';
 import { openAttachments } from './attachments.js';
 import { attachmentUI } from './attachments-ui.js';
+import { backupUI, renderArchive, snapshotChat } from './backup-ui.js';
+import { getArchive, listArchives } from './archives.js';
 
 const context = BACKGROUND_CONTEXT;
 const $ = (id) => document.getElementById(id);
@@ -44,6 +46,7 @@ let conversationId;
 let conversationTabId;
 let useConversationTab = true;
 let attachments;
+let portableBusy = false;
 const allSiteOrigins = ['http://*/*', 'https://*/*'];
 const searchOrigins = { exa: 'https://mcp.exa.ai/*', tinyfish: 'https://api.search.tinyfish.ai/*', brave: 'https://api.search.brave.com/*' };
 const modelApis = {
@@ -659,7 +662,7 @@ async function start() {
   };
   let changingModel = false;
   chrome.storage.onChanged.addListener((changes, area) => {
-    if (area === 'local' && changes.conversations) showConversations(Object.values(changes.conversations.newValue || {}));
+    if (area === 'local' && changes.conversations) void listArchives().then(archives => showConversations([...Object.values(changes.conversations.newValue || {}), ...archives.map(({ id, title }) => ({ id, title: `${title} · Archive` }))]));
     if (!changingModel && ((area === 'local' && (changes.modelConnection || changes.mode || changes.apiKey)) || (area === 'session' && changes.apiKey))) {
       reconnectPending = true;
       // A handed-off panel must not race its new owner for the lock.
@@ -669,7 +672,7 @@ async function start() {
   });
   $('conversation').addEventListener('click', async (event) => {
     const button = event.target.closest('button');
-    if (busy || !button || button.value === conversationId) return;
+    if (busy || portableBusy || !button || button.value === conversationId) return;
     try {
       await saveDraft();
       const selected = await conversationRequest({ id: button.value });
@@ -678,7 +681,7 @@ async function start() {
     } catch (error) { $('status').textContent = error.message; }
   });
   $('open-conversation').addEventListener('click', async () => {
-    if (busy || !ownsConversation) return;
+    if (busy || portableBusy || !ownsConversation) return;
     // Release ownership before activating the destination; Chrome may pause
     // a hidden source while its handoff is still in progress.
     try {
@@ -979,9 +982,38 @@ async function start() {
     await chrome.storage.local.set({ companionHiddenSites: [] });
     $('restore-companions').textContent = 'Companions restored';
   });
+  backupUI({
+    embedded, currentId: () => conversationId,
+    busy: () => busy || portableBusy || Boolean(attachments?.working()),
+    setBusy: value => {
+      portableBusy = value;
+      $('composer').inert = $('settings').inert = value;
+      $('export-backup').disabled = $('import-backup').disabled = value;
+    },
+    snapshot: async () => {
+      const archived = await getArchive(conversationId);
+      if (archived) return archived;
+      if (!ownsConversation || !root || settingsOnly) throw new Error('Open this chat in a tab, close Settings, and stop active work before exporting.');
+      const { conversations = {} } = await chrome.storage.local.get('conversations');
+      const snapshot = await snapshotChat(root, attachments, context, conversations[conversationId]?.title || 'Conversation');
+      if (!ownsConversation) throw new Error('Conversation moved. Try again in its active panel.');
+      return snapshot;
+    },
+    refresh: async () => showConversations((await conversationRequest()).conversations),
+  });
   if (settingsOnly) {
     document.body.dataset.settings = 'true';
     document.title = 'Accanto · Settings';
+    return;
+  }
+  const archived = await getArchive(conversationId);
+  if (archived) {
+    renderArchive(archived);
+    $('status').textContent = 'Read-only archive · Tasks cannot resume. Sources can be saved locally and selected in a new chat.';
+    $('composer').hidden = true;
+    $('onboarding').hidden = true;
+    for (const id of ['new-conversation', 'web-conversation', 'page-conversation', 'use-current-tab']) $(id).disabled = true;
+    $('open-conversation').disabled = false;
     return;
   }
   const ownership = new BroadcastChannel(`pi-accanto-ownership-${conversationId}`);
@@ -1039,7 +1071,7 @@ async function start() {
   const databaseName = conversationId === 'legacy' ? database : `${database}-${conversationId}`;
   const profile = modelConfig.profiles?.[modelId];
   const imageInput = profile ? profile.input.includes('image') : Boolean(modelConnection?.imageInput);
-  const attachmentView = attachmentUI({ owns: () => ownsConversation, busy: () => busy });
+  const attachmentView = attachmentUI({ owns: () => ownsConversation, busy: () => busy || portableBusy });
   attachments = await openAttachments({ database: databaseName, session: browserSession, owns: () => ownsConversation, vision: () => imageInput, changed: attachmentView.render });
   attachmentView.bind(attachments);
   const faux = fauxProvider();
@@ -1196,7 +1228,7 @@ async function start() {
   for (const id of ['use-current-tab', 'new-conversation', 'web-conversation', 'page-conversation']) {
     if (id === 'use-current-tab' || id === 'new-conversation') $(id).disabled = false;
     $(id).addEventListener('click', async () => {
-      if (busy || !ownsConversation) return;
+      if (busy || portableBusy || !ownsConversation) return;
       $('history-menu').open = $('context-menu').open = false;
       busy = true;
       $('conversation').disabled = $('open-conversation').disabled = true;
@@ -1233,7 +1265,7 @@ async function start() {
   }
   $('composer').addEventListener('submit', async (event) => {
     event.preventDefault();
-    if (busy || !ownsConversation || $('send').disabled) return;
+    if (busy || portableBusy || !ownsConversation || $('send').disabled) return;
     const draft = $('prompt').value;
     const prompt = draft.trim();
     if (!prompt) return;
@@ -1250,6 +1282,9 @@ async function start() {
     $('connect').disabled = true;
     $('use-current-tab').disabled = $('new-conversation').disabled = $('web-conversation').disabled = $('page-conversation').disabled = true;
     try {
+      await navigator.locks.request('accanto-portable-operation', { mode: 'shared', ifAvailable: true }, async lock => {
+      if (!lock) throw new Error('Wait for backup or restore to finish.');
+      controller.signal.throwIfAborted();
       await saveDraft();
       controller.signal.throwIfAborted();
       if (!await refreshModelAccess()) throw new Error(missingModelAccess);
@@ -1301,6 +1336,7 @@ async function start() {
         if (result.status === 'done') connectionStatus('verified', `Chat verified with ${modelId} by a successful reply in this panel.`);
         else if (result.reason === 'model_error') connectionStatus('error', 'Chat request failed. Saved model settings are unchanged; see the provider error in the conversation.');
       }
+      });
     } catch (error) {
       if (!$('prompt').value) $('prompt').value = draft;
       if (ownsConversation) $('status').textContent = controller.signal.aborted ? 'Stopped · Your draft is ready to resend.' : `Error: ${error.message}`;

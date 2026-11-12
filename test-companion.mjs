@@ -11,6 +11,12 @@ await mkdir(artifacts, { recursive: true });
 const profile = await mkdtemp(`${tmpdir()}/accanto-companion-`);
 const extension = resolve(profile, 'extension');
 await cp('dist', extension, { recursive: true });
+// Service-worker modules forbid dynamic import from evaluation. Expose the
+// existing production handlers only inside this disposable fixture copy.
+const backgroundPath = resolve(extension, 'background.js');
+await writeFile(backgroundPath, `${await readFile(backgroundPath, 'utf8')}
+Object.assign(globalThis, { handleCommand, openCompanion, openAccanto });
+`);
 const manifest = JSON.parse(await readFile(resolve(extension, 'manifest.json'), 'utf8'));
 assert.equal(manifest.permissions.includes('sidePanel'), false, 'Accanto must not request Chrome sidebar access');
 assert.equal('side_panel' in manifest, false, 'Accanto must not register a sidebar');

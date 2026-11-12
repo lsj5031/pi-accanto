@@ -21,6 +21,7 @@ jobs:
       - run: npx playwright install --with-deps chromium
       - run: npm run package
       - run: npm run test:distribution
+      - run: npm run test:release
       - run: npm run test:permissions
       - run: npm run test:panel-state
       - run: npm run test:identity
