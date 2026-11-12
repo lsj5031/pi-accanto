@@ -1,6 +1,6 @@
 // PDF.js's shipped compatibility build includes the Map/WeakMap helpers used
 // by rendering on supported Chromium versions, not only by text extraction.
-import { getDocument, PDFWorker } from 'pdfjs-dist/legacy/build/pdf.mjs';
+import { getDocument, PDFWorker, OPS } from 'pdfjs-dist/legacy/build/pdf.mjs';
 import { Type } from 'typebox';
 
 export const PDF_OPTIONS = {
@@ -8,7 +8,7 @@ export const PDF_OPTIONS = {
   page_count: Type.Optional(Type.Integer({ minimum: 1, maximum: 8, description: 'Consecutive pages, default 8 for text or 2 for visual; visual maximum 2.' })),
   visual: Type.Optional(Type.Boolean({ description: 'Render pages as images for vision, including diagrams or partial-text pages. Default false (native text only).' })),
 };
-export const PDF_HELP = 'PDFs: native text defaults to 8 pages/16000 characters. For no-text pages, diagrams or partial text, request visual:true, start_page and page_count (1–2). Visual reads return native text plus labeled page images, not OCR. Follow nextPage incrementally; never infer uninspected pages. Vision model required for images. Call visual reads directly as model tools, not through Code Mode (which cannot carry these images). Native text reads work in Code Mode.';
+export const PDF_HELP = 'PDFs: native text defaults to 8 pages/16000 characters. Inspect imagePages and each page imageContent even when native text exists: headers can mask scanned bodies. For relevant image content, diagrams, no-text or partial-text pages, request visual:true, start_page and page_count (1–2). Images do not invalidate native text. Visual reads return native text plus labeled page images, not OCR. Follow nextPage incrementally; never infer uninspected pages. Vision model required for images. Call visual reads directly as model tools, not through Code Mode (which cannot carry these images). Native text reads work in Code Mode.';
 
 export function pdfOutput(result) {
   const { images = [], ...metadata } = result;
@@ -81,7 +81,8 @@ export async function readPdf(url, startPage = 1, signal, { visual = false, page
       worker = new PDFWorker({ port });
       loading = getDocument({
         data, worker, isEvalSupported: false, useWasm: false, disableFontFace: true,
-        stopAtErrors: true, maxImageSize: 16000000, canvasMaxAreaInBytes: 64 * 1024 * 1024,
+        stopAtErrors: true, maxImageSize: 64 * 1024 * 1024, canvasMaxAreaInBytes: 16 * 1024 * 1024,
+        wasmUrl: chrome.runtime.getURL('wasm/'),
         cMapUrl: chrome.runtime.getURL('cmaps/'), cMapPacked: true,
         standardFontDataUrl: chrome.runtime.getURL('standard_fonts/'),
       });
@@ -98,13 +99,39 @@ export async function readPdf(url, startPage = 1, signal, { visual = false, page
       for (let number = startPage; number <= Math.min(document.numPages, startPage + page_count - 1) && (remaining > 0 || render); number++) {
         combined.throwIfAborted();
         const page = await document.getPage(number);
-        const textReader = remaining ? page.streamTextContent().getReader() : null;
+        let textReader;
         let text = '';
         let truncated = !remaining;
         let canvas, task;
         const cancelRender = () => task?.cancel();
         combined.addEventListener('abort', cancelRender, { once: true });
         try {
+          // Inspect the same display list rendering uses. This includes nested
+          // forms and optimized inline/group/repeat operations, not just XObjects.
+          // The worker bounds source pixels before any image is decoded.
+          const operators = await page.getOperatorList();
+          if (operators.fnArray.length > 100000) throw new Error('PDF page exceeds the 100,000 drawing-operation inspection limit. Open a simpler or extracted section.');
+          let imageOperations = 0;
+          const imageOps = new Set([
+            OPS.paintImageXObject, OPS.paintImageXObjectRepeat,
+            OPS.paintInlineImageXObject, OPS.paintInlineImageXObjectGroup,
+            OPS.paintImageMaskXObject, OPS.paintImageMaskXObjectGroup,
+            OPS.paintImageMaskXObjectRepeat, OPS.paintSolidColorImageMask,
+          ]);
+          for (let i = 0; i < operators.fnArray.length; i++) {
+            if (!imageOps.has(operators.fnArray[i])) continue;
+            imageOperations++;
+            const id = operators.argsArray[i]?.[0];
+            if (id === 'accanto_source_limit') throw new Error('PDF image source budget exceeded (64 Mi pixels or 4,096 decoded images per page). Open a lower-resolution or extracted section and retry.');
+            if (id === 'accanto_decode_error') throw new Error('A PDF image could not be decoded safely. No complete page image is available. Open a lower-resolution or unlocked copy and retry.');
+            if (typeof id === 'string') {
+              const store = id.startsWith('g_') ? page.commonObjs : page.objs;
+              const image = await new Promise(resolve => store.get(id, resolve));
+              if (!image) throw new Error('A PDF image could not be decoded safely. No complete page image is available. Open a lower-resolution or unlocked copy and retry.');
+            }
+          }
+          const imageContent = { present: imageOperations > 0, operations: imageOperations };
+          textReader = remaining ? page.streamTextContent().getReader() : null;
           try {
             while (textReader) {
               combined.throwIfAborted();
@@ -153,7 +180,7 @@ export async function readPdf(url, startPage = 1, signal, { visual = false, page
             }
             images.push({ page: number, data, mimeType: 'image/jpeg' });
           }
-          pages.push({ page: number, text: text.trim(), textStatus: truncated ? 'character_limit' : text.trim() ? 'extracted' : 'no_extractable_text', truncated,
+          pages.push({ page: number, text: text.trim(), textStatus: truncated ? 'character_limit' : text.trim() ? 'extracted' : 'no_extractable_text', truncated, imageContent,
             ...(render ? { image: { index: images.length, width: canvas.width, height: canvas.height, encodedBytes: images.at(-1).data.length } } : {}),
           });
         } finally {
@@ -166,14 +193,16 @@ export async function readPdf(url, startPage = 1, signal, { visual = false, page
       const nextPage = pages.at(-1).page < document.numPages ? pages.at(-1).page + 1 : null;
       const truncated = Boolean(nextPage || pages.some(page => page.truncated));
       const noTextPages = pages.filter(page => page.textStatus === 'no_extractable_text').map(page => page.page);
+      const imagePages = pages.filter(page => page.imageContent.present).map(page => page.page);
       return {
-        format: 'pdf', totalPages: document.numPages, pages, noTextPages, truncated, nextPage, visionAvailable: vision,
+        format: 'pdf', totalPages: document.numPages, pages, noTextPages, imagePages, truncated, nextPage, visionAvailable: vision,
         ...(render ? { images } : {}),
         note: [
           'Native PDF text; reading order and tables may be imperfect. Cite physical PDF page numbers. Text presence does not mean diagrams or all page content were read.',
+          imagePages.length ? `Image content on physical pages ${imagePages.join(', ')}. Native text may be only headers, captions or footers, or may coexist with diagrams. It does not cover image content. ${render ? 'See the labeled page images.' : 'When relevant to the question, request visual:true with start_page and page_count:1 or 2; do not automatically send every page.'}` : '',
           noTextPages.length ? `No extractable text on physical pages ${noTextPages.join(', ')}. This does not establish whether they are scanned, blank or contain diagrams. ${render ? 'See the labeled page images.' : 'Request visual:true with start_page and page_count:1 or 2 to inspect them.'}` : '',
           visual && !vision ? 'No images sent: this model does not support image input. Native text remains available. Switch to a vision-capable profile or enable image input for a compatible custom model, then request visual:true.' : '',
-          render ? 'Labeled images are for visual interpretation, not OCR extraction. At most 2 images, each ≤1600px per edge, 2 megapixels and 1,500,000 base64 bytes. Images over 16 megapixels inside the PDF may be omitted by PDF.js; renders may be incomplete. Small text may need a higher-quality original.' : '',
+          render ? 'Labeled images are for visual interpretation, not OCR extraction. At most 2 images, each ≤1600px per edge, 2 megapixels and 1,500,000 base64 bytes. Source images are limited to 64 Mi pixels per page; oversized or undecodable images fail explicitly rather than returning an incomplete render. Small text may need a higher-quality original.' : '',
           truncated ? 'Partial document: bounded pages and 16,000 text characters per read. Do not claim to have read omitted text or uninspected pages.' : '',
           nextPage ? `Read again with start_page: ${nextPage} for later pages.` : '',
           pages.some(page => page.truncated) ? 'Native text was cut at the character limit; later native text on that page is unavailable in this result.' : '',

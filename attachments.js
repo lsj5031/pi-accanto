@@ -132,7 +132,7 @@ export async function openAttachments({ database, session, owns, vision, changed
           if (!new TextDecoder().decode(bytes.subarray(0, 1024)).includes('%PDF-')) throw new Error('Not a PDF. Choose a valid PDF file.');
           const result = await readPdf(bytes, 1, controller.signal);
           record.pages = result.totalPages;
-          record.note = result.noTextPages.length ? `No native text on inspected pages ${result.noTextPages.join(', ')}. Visual reading available with a vision model.` : '';
+          record.note = result.imagePages.length ? `Image content on inspected pages ${result.imagePages.join(', ')}; native text may not cover it. Visual reading available with a vision model.` : result.noTextPages.length ? `No native text on inspected pages ${result.noTextPages.join(', ')}. Visual reading available with a vision model.` : '';
           record.blob = file;
         } else if (kind === 'text') {
           const value = new TextDecoder('utf-8', { fatal: true }).decode(bytes);

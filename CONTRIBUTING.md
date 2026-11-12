@@ -96,6 +96,8 @@ authenticated compact and enlarged iframe.
 bytes, bounds, text-only feedback, the Code Mode direct-call boundary, render
 cancellation/removal/ownership cleanup and the actual 30-second timeout. It
 does not claim live-model interpretation accuracy.
+High-resolution CCITT/header regressions and the local actual-document evidence
+are described in [PDF image-body verification](docs/verification/pdf-image-body.md).
 
 Keep source records and binary lifetimes separate from the model transcript.
 `attachments.js` owns stable IDs, bounds, persistence and read cancellation;

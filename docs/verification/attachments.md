@@ -20,8 +20,10 @@ compatibility build fixes the missing Map/WeakMap `getOrInsertComputed` methods
 observed in real Chromium rendering, without a dependency upgrade. Reads keep
 the existing validated main-PDF fetch path and 30-second deadline. Visual reads
 cap at two images, each 1600px per edge, 2 megapixels and 1,500,000 base64 bytes;
-oversized encodings are downscaled. Embedded PDF images above 16 megapixels
-may be omitted by PDF.js, explicitly disclosed in visual results. Small text,
+oversized encodings are downscaled. The original 16-megapixel embedded-image
+limit was subsequently replaced with bounded, fail-explicit high-resolution
+scan support and per-page image-content hints; see
+[PDF image-body verification](pdf-image-body.md). Small text,
 unsupported encodings and complex PDFs can still require a better original.
 
 The installed Code Mode `outcomeOf` converts schema-less results to text and
