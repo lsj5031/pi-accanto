@@ -71,11 +71,31 @@
     launcher.focus({ preventScroll: true });
     clamp();
   };
-  const remove = () => { clearTimeout(timer); host.remove(); chrome.runtime.onMessage.removeListener(receive); chrome.storage.onChanged.removeListener(hiddenChanged); removeEventListener('message', fromFrame); removeEventListener('resize', clamp); globalThis.accantoCompanion = false; };
+  const remove = event => {
+    void chrome.runtime.sendMessage({ type: 'companion-revoke' }).catch(() => {});
+    removeEventListener('pagehide', remove);
+    if (event?.type !== 'pagehide') removeEventListener('pageshow', restored);
+    clearTimeout(timer); host.remove(); chrome.runtime.onMessage.removeListener(receive); chrome.storage.onChanged.removeListener(hiddenChanged); removeEventListener('message', fromFrame); removeEventListener('resize', clamp); globalThis.accantoCompanion = false;
+  };
+  addEventListener('pagehide', remove, { once: true });
+  const restored = event => {
+    // BFCache must create a fresh iframe, never resume the old agent.
+    if (event.persisted) {
+      removeEventListener('pageshow', restored);
+      void chrome.runtime.sendMessage({ type: 'companion-restore' }).catch(() => {});
+    }
+  };
+  addEventListener('pageshow', restored);
   const hiddenChanged = (changes, area) => { if (area === 'local' && changes.companionHiddenSites?.newValue?.includes(origin)) remove(); };
   const receive = (message, sender, reply) => {
     if (sender.id !== chrome.runtime.id) return;
+    if (message.type === 'companion-ready') { clearTimeout(timer); shadow.querySelector('.fallback').hidden = true; }
+    if (message.type === 'companion-close') minimize();
     if (message.type === 'companion-challenge' && frame?.contentWindow) {
+      if (typeof chrome.runtime.getDocumentId === 'function') {
+        Promise.resolve(chrome.runtime.getDocumentId(frame)).then(documentId => reply({ documentId }), () => reply({ ok: false }));
+        return true;
+      }
       frame.contentWindow.postMessage({ type: 'accanto-challenge', challenge: message.challenge }, extensionOrigin);
       reply({ ok: true });
     }

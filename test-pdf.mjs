@@ -150,6 +150,14 @@ try {
   responseMode = undefined;
   await send('Recover after Stop');
   assert.match(await result(), /KOWHAI-92/);
+  // A same-URL reload changes document identity even though URL checks pass.
+  responseMode = 'slow';
+  await panel.locator('#prompt').fill('Read while reloading the same PDF');
+  await panel.locator('#send').evaluate(button => button.click());
+  await panel.waitForFunction(() => document.getElementById('status').textContent.includes('Reading PDF'));
+  await fixture.reload();
+  await panel.waitForFunction(() => !document.getElementById('send').disabled);
+  assert.match(await result(), /changed while reading/);
   // Navigation during extraction discards the old PDF result, including same-origin navigation.
   responseMode = 'slow';
   await panel.locator('#prompt').fill('Read while navigating');

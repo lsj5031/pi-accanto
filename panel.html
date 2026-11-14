@@ -57,7 +57,7 @@
       <section class="portable-section" aria-label="About and backups">
         <h2>About Accanto <span id="installed-version"></span></h2>
         <p><a href="https://github.com/lsj5031/pi-accanto/releases/latest" target="_blank" rel="noopener noreferrer">Open latest release</a></p>
-        <p>Manual update: stop active work and save the selected chat as a read-only archive. Extract the single ZIP into the same permanent folder, reload in chrome://extensions, and refresh open pages. The backup excludes settings and keys; it is not a full-profile rollback. Reenter session-only keys. Downgrades are unsupported.</p>
+        <p id="update-help">Manual Chrome update: stop active work and save the selected chat as a read-only archive. Extract the single ZIP into the same permanent folder, reload in chrome://extensions, and refresh open pages. The backup excludes settings and keys; it is not a full-profile rollback. Reenter session-only keys. Downgrades are unsupported.</p>
         <div id="portable-controls" hidden>
           <h2>Conversation backup</h2>
           <p>Private content, images and URLs (including private parameters) may contain secrets. Save locally and protect the file. Keys and connection settings are not exported. Open an idle chat here to export it with its selected sources.</p>
@@ -97,7 +97,7 @@
   <section id="site-access" class="tab-switch" aria-label="Page access" hidden>
     <div class="notice-copy">
       <p id="site-access-host"></p>
-      <p class="context-hint">Allow page access on this site. Chrome remembers your choice; revoke it in extension settings.</p>
+      <p class="context-hint">Allow page access on this site. Your browser remembers your choice; revoke it in extension settings.</p>
     </div>
     <button type="button" id="allow-site">Allow this site</button>
   </section>
@@ -136,7 +136,7 @@
   </section>
   <details id="sources" class="research-settings" hidden>
     <summary>Web sources <span id="source-count"></span></summary>
-    <p class="source-note">Snippets aren’t full pages. Accanto can read these results using your Chrome website permissions.</p>
+    <p class="source-note">Snippets aren’t full pages. Accanto can read these results using your browser’s website permissions.</p>
     <div id="source-list"></div>
   </details>
   <main id="transcript" aria-label="Conversation" aria-live="polite"></main>
@@ -197,9 +197,9 @@
       <div id="minimize-shortcut"><dt>Minimize companion</dt><dd><kbd>Esc</kbd></dd></div>
       <div><dt>Close menu or help</dt><dd><kbd>Esc</kbd></dd></div>
     </dl>
-    <p>Chrome shortcuts work while browsing, even outside the chat. If one is not assigned or conflicts with another app, choose a different combination below.</p>
+    <p>Browser shortcuts work while browsing, even outside the chat. If one is not assigned or conflicts with another app, choose a different combination below.</p>
     </div>
-    <button type="button" id="customize-shortcuts">Customize in Chrome <span aria-hidden="true">↗</span></button>
+    <button type="button" id="customize-shortcuts">Customize shortcuts <span aria-hidden="true">↗</span></button>
   </dialog>
   <script type="module" src="panel.js"></script>
 </body>

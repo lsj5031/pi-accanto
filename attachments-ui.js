@@ -1,3 +1,4 @@
+import { hostPermission } from './host-permission.js';
 export function attachmentUI({ owns, busy }) {
   const $ = id => document.getElementById(id);
   let collection;
@@ -68,7 +69,7 @@ export function attachmentUI({ owns, busy }) {
           if (!allowed()) return;
           try {
             // Request only the chosen origin, directly in this click gesture.
-            if (!await chrome.permissions.request({ origins: [`${new URL(tab.url).origin}/*`] })) throw new Error('Website access declined. Choose the tab again to retry.');
+            if (!await chrome.permissions.request({ origins: [hostPermission(tab.url)] })) throw new Error('Website access declined. Choose the tab again to retry.');
             const current = await chrome.tabs.get(tab.id);
             if (current.url !== tab.url || current.status === 'loading') throw new Error('This tab changed. Close the picker and select it again.');
             await collection.addTab(current);

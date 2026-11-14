@@ -109,6 +109,44 @@ tested lifecycle semantics and the explicit design-engineering critique.
 
 ## Opt-in integration checks
 
+### Experimental Firefox build
+
+The default build/package commands remain Chrome-only, with the same stable
+public key and ZIP name. Build Firefox separately:
+
+```sh
+npm ci
+node build.mjs --browser=firefox
+node package-extension.mjs --browser=firefox
+```
+
+These create `dist-firefox/` and
+`artifacts/pi-accanto-VERSION-firefox.zip`, an unsigned temporary-install package.
+Do not load the source manifest in Firefox. Read the
+[Firefox verification notes](docs/verification/firefox.md) for installation,
+keyless local checks, observed iframe isolation, PDF limits and signing gates.
+
+After building and packaging **both** targets, run the focused checks added for
+the port:
+
+```sh
+node --test test-browser-target.mjs test-document-authorization.mjs test-main-document.mjs test-permissions.mjs test-panel-state.mjs test-distribution.mjs
+```
+
+The browser-target checks require actual packages, rather than silently skipping
+missing outputs. The authorization checks drive production message handlers with
+controlled browser responses; they are not a substitute for real Firefox tests.
+Use disposable profiles and local synthetic endpoints for browser qualification.
+Do not run authenticated external-model checks or use personal browser profiles
+as part of the deterministic port gate. The separate Firefox harness integration
+must qualify the shipped artifact and document unsupported native/ESR coverage.
+After that harness is integrated, `node test-browser-fallback.mjs` checks the
+authenticated Firefox launcher-to-tab path, rogue-frame rejection, reload
+revocation and native-PDF file guidance. `ACCANTO_FIREFOX_HARNESS` can point to an
+absolute `test/firefox-browser.mjs` path in a separate read-only harness worktree;
+set `ACCANTO_FIREFOX_EXTENSION` to the actual unmodified `dist-firefox/` and
+`ACCANTO_ARTIFACT_DIR` to an output directory in your own worktree.
+
 `npm run test:research:live` adds real provider requests and live-model scenarios.
 Provide `ACCANTO_MODEL_ENDPOINT` (OpenAI-compatible base URL),
 `ACCANTO_MODEL_ID` and `ACCANTO_MODEL_API_KEY` in your local process environment,

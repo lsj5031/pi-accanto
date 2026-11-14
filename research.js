@@ -1,3 +1,4 @@
+import { hostPermission } from './host-permission.js';
 import { defineTool } from '@earendil-works/pi-durable';
 import { Type } from 'typebox';
 import { readCredential } from './credentials.js';
@@ -136,7 +137,7 @@ export function createResearchTools({ inTarget, sources, showSources, showSearch
         const source = sources.get(url);
         if (!source) throw new Error('This URL is not in this task’s search results. Search for it before reading.');
         const origin = new URL(url).origin;
-        source.access = await chrome.permissions.contains({ origins: [`${origin}/*`] });
+        source.access = await chrome.permissions.contains({ origins: [hostPermission(origin)] });
         if (!source.access) {
           showSources();
           throw new Error('Website access is needed to read this source. Ask the user to choose Allow website beside this action, then retry.');

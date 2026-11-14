@@ -2,8 +2,13 @@ import { execFileSync } from 'node:child_process';
 import { access, mkdir, readFile, readdir, rm, utimes } from 'node:fs/promises';
 import { resolve } from 'node:path';
 
-const dist = resolve('dist');
+const target = process.argv.slice(2);
+if (target.length > 1 || (target.length && !['--browser=chrome', '--browser=firefox'].includes(target[0]))) throw new Error('Usage: node package-extension.mjs [--browser=chrome|--browser=firefox]');
+const firefox = target[0] === '--browser=firefox';
+const directory = firefox ? 'dist-firefox' : 'dist';
+const dist = resolve(directory);
 const manifest = JSON.parse(await readFile(resolve(dist, 'manifest.json'), 'utf8'));
+if (firefox !== Boolean(manifest.browser_specific_settings?.gecko)) throw new Error('Manifest browser target does not match the package target.');
 if (manifest.action.default_popup) throw new Error('Package the built dist folder, not the source checkout.');
 if (!/^\d+\.\d+\.\d+(?:\.\d+)?$/.test(manifest.version)) throw new Error('Invalid extension version.');
 for (const file of ['panel.js', 'panel.html', 'companion.html', 'companion-bridge.js', 'companion-host.js', 'background.js', 'codemode-worker.js', 'quickjs.wasm', 'basecoat.css', 'panel.css', 'pdf.worker.mjs', 'third-party/index.json', 'LICENSE', 'THIRD_PARTY_NOTICES.md']) {
@@ -11,14 +16,14 @@ for (const file of ['panel.js', 'panel.html', 'companion.html', 'companion-bridg
 }
 // esbuild's metadata identifies any imports left for Chrome to resolve.
 const metadata = JSON.parse(await readFile(resolve(dist, 'bundle-meta.json'), 'utf8'));
-for (const entry of ['dist/panel.js', 'dist/codemode-worker.js']) {
+for (const entry of [`${directory}/panel.js`, `${directory}/codemode-worker.js`]) {
   if (!metadata.outputs[entry]) throw new Error(`Missing bundle metadata for ${entry}. Rebuild before packaging.`);
 }
 for (const output of Object.values(metadata.outputs)) {
   if (output.imports.some(item => item.external)) throw new Error('The extension bundle still contains external imports.');
 }
 await mkdir('artifacts', { recursive: true });
-const archive = resolve('artifacts', `pi-accanto-${manifest.version}.zip`);
+const archive = resolve('artifacts', `pi-accanto-${manifest.version}${firefox ? '-firefox' : ''}.zip`);
 await rm(archive, { force: true });
 if (process.platform === 'win32') {
   // Paths are passed as environment variables, never interpolated as commands.

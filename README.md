@@ -79,7 +79,13 @@ See [privacy and deletion details](PRIVACY.md).
 
 ## Get started
 
-You'll need **Chrome** and an
+An **experimental Firefox desktop 153+ build** is also available from source.
+It uses a standalone Accanto tab: the website companion offers **Open in a tab**
+instead of running an embedded agent. Firefox's native PDF viewer is not readable;
+attach the PDF file explicitly. See [Firefox installation and test steps](docs/verification/firefox.md).
+This is not a signed Firefox release or an ESR-qualification claim.
+
+For the Chrome instructions below, you'll need **Chrome** and an
 **AI provider's API key**. OpenAI, Anthropic, Google Gemini and OpenAI-compatible
 servers are supported. Your provider may charge for use; a chat subscription
 doesn't include an API key.

@@ -1,3 +1,4 @@
+import { injectedDocument, validDocumentId } from './document-identity.js';
 import { Type } from 'typebox';
 import { defineTool } from '@earendil-works/pi-durable';
 import { readPdf, pdfOutput, PDF_OPTIONS, PDF_HELP } from './pdf-reader.js';
@@ -176,8 +177,8 @@ export async function openAttachments({ database, session, owns, vision, changed
     // This reads identity only, never page text.
     let identity;
     try {
-      [identity] = await chrome.scripting.executeScript({ target: { tabId: tab.id }, func: () => ({ url: location.href }) });
-    } catch { throw new Error('Website access needed. Allow this site using Chrome’s extension access controls, then select the tab again.'); }
+      identity = injectedDocument(await chrome.scripting.executeScript({ target: { tabId: tab.id }, func: () => ({ url: location.href }) }));
+    } catch { throw new Error('Document identity or website access unavailable. Allow this site using the browser’s extension access controls, then select the tab again.'); }
     if (generation !== selection || !owns()) throw new Error('Source selection cancelled because the task or active panel changed. Select it again.');
     if (identity.result.url !== tab.url) throw new Error('Tab changed. Select it again.');
     const record = { id: crypto.randomUUID(), kind: 'tab', name: (tab.title || tab.url).slice(0, 240), url: tab.url, tabId: tab.id, documentId: identity.documentId, session, size: 0, state: 'ready', created: Date.now() };
@@ -204,6 +205,7 @@ export async function openAttachments({ database, session, owns, vision, changed
       if (record.state !== 'ready') throw new Error(record.note || 'Source is still importing.');
       let result;
       if (record.kind === 'tab') {
+        if (!validDocumentId(record.documentId)) throw new Error('Document identity unavailable. Remove this source and select the tab again.');
         if (record.session !== session) throw new Error('Browser restarted. Remove this source and explicitly select the tab again.');
         const tab = await chrome.tabs.get(record.tabId).catch(() => undefined);
         if (!tab || tab.url !== record.url || tab.status === 'loading') {
@@ -217,8 +219,14 @@ export async function openAttachments({ database, session, owns, vision, changed
           unavailable(record, 'Tab document or website access changed. Remove and select the tab again; allow this site using Chrome’s extension access controls if needed.');
           combined.throwIfAborted();
         }
-        result = output[0]?.result;
-        if (result?.error) throw new Error(result.error);
+        // An application-level refusal (for example a PDF tab) has useful
+        // guidance, unlike a missing/errored browser injection result.
+        if (!output?.[0]?.error && output?.[0]?.documentId === record.documentId && output?.[0]?.result?.error) throw new Error(output[0].result.error);
+        try { result = injectedDocument(output, record.documentId).result; }
+        catch {
+          unavailable(record, 'Tab document or website access changed. Remove and select the tab again.');
+          combined.throwIfAborted();
+        }
         const current = await chrome.tabs.get(record.tabId);
         if (current.url !== record.url || current.status === 'loading') throw new Error('Selected tab changed during reading. Select it again.');
       } else if (record.kind === 'pdf') result = await readPdf(new Uint8Array(await record.blob.arrayBuffer()), start_page, combined, { visual, page_count, vision: vision() });

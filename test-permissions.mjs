@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
+import { hostPermission } from './host-permission.js';
 
 // Run the production handler with controlled Chrome API completions. These
 // exercise feedback races, not Chrome's native permission prompt.
@@ -39,8 +40,8 @@ async function setup(initiallyAllowed = false) {
     runtime: { getManifest: () => ({ host_permissions: ['file:///*', 'https://mcp.exa.ai/*'] }) },
     storage: { local: { get: async () => ({}) }, session: { get: async () => ({}) } },
   };
-  await new AsyncFunction('$', 'chrome', 'allSiteOrigins', 'endpoint', 'searchOrigins', 'showAttachment', handler)(
-    id => elements[id], chrome, ['http://*/*', 'https://*/*'], 'https://model.example/v1', { exa: 'https://mcp.exa.ai/*' }, async () => {},
+  await new AsyncFunction('$', 'chrome', 'allSiteOrigins', 'endpoint', 'searchOrigins', 'showAttachment', 'hostPermission', handler)(
+    id => elements[id], chrome, ['http://*/*', 'https://*/*'], 'https://model.example/v1', { exa: 'https://mcp.exa.ai/*' }, async () => {}, value => hostPermission(value, {}),
   );
   return {
     elements, requests, pendingContains,
@@ -54,7 +55,7 @@ test('first request, denial, retry, and grant show current feedback', async () =
   const first = elements.click();
   assert.equal(requests.length, 1, 'Request must run synchronously inside the click gesture');
   assert.equal(elements['all-sites'].disabled, true);
-  assert.match(elements['access-status'].textContent, /Confirm website access in Chrome/);
+  assert.match(elements['access-status'].textContent, /Confirm website access in your browser/);
   await elements.click();
   assert.equal(requests.length, 1, 'Repeated clicks must not start overlapping requests');
   requests[0].resolve(false);
@@ -62,11 +63,11 @@ test('first request, denial, retry, and grant show current feedback', async () =
   assert.match(elements['access-status'].textContent, /declined/);
   assert.equal(elements['all-sites'].disabled, false);
   const retry = elements.click();
-  assert.match(elements['access-status'].textContent, /Confirm website access in Chrome/);
+  assert.match(elements['access-status'].textContent, /Confirm website access in your browser/);
   assert.doesNotMatch(elements['access-status'].textContent, /declined/);
   change(true);
   await Promise.resolve();
-  assert.match(elements['access-status'].textContent, /Confirm website access in Chrome/);
+  assert.match(elements['access-status'].textContent, /Confirm website access in your browser/);
   requests[1].resolve(true);
   await retry;
   assert.match(elements['access-status'].textContent, /All websites allowed/);
@@ -74,21 +75,26 @@ test('first request, denial, retry, and grant show current feedback', async () =
   assert.equal(elements['all-sites'].textContent, 'Remove all-site access');
 });
 
-test('removal events preserve service reconfirmation, even when they finish late', async () => {
+test('removal requires a fresh gesture for narrow service reconfirmation', async () => {
   const { elements, requests, pendingContains, delayContains } = await setup(true);
   delayContains();
   const removal = elements.click();
-  // Storage reads and removal precede service reconfirmation.
-  for (let i = 0; i < 10 && !requests.length; i++) await Promise.resolve();
-  assert.equal(requests.length, 1);
+  // Complete the contains() read used to refresh the removal UI.
+  for (let i = 0; i < 20 && pendingContains.length < 3; i++) await Promise.resolve();
+  for (const result of pendingContains) result.resolve(result.allowed);
+  await removal;
+  assert.equal(requests.length, 0, 'Never request a permission after asynchronous removal');
+  assert.match(elements['access-status'].textContent, /Website access removed/);
+  assert.equal(elements['all-sites'].textContent, 'Restore service access');
+  const restore = elements.click();
+  assert.equal(requests.length, 1, 'Restore requests synchronously in the second gesture');
   assert.deepEqual(requests[0].options.origins, ['https://mcp.exa.ai/*', 'https://model.example/*']);
-  assert.match(elements['access-status'].textContent, /Confirm model and search service access/);
   assert.equal(elements['all-sites'].disabled, true);
   requests[0].resolve(false);
-  await removal;
-  assert.match(elements['access-status'].textContent, /Website access removed. Reconnect/);
+  await restore;
+  assert.match(elements['access-status'].textContent, /Service access declined/);
   for (const result of pendingContains) result.resolve(result.allowed);
   await Promise.resolve();
-  assert.match(elements['access-status'].textContent, /Website access removed. Reconnect/);
+  assert.match(elements['access-status'].textContent, /Service access declined/);
   assert.equal(elements['all-sites'].disabled, false);
 });

@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+- Experimental Firefox desktop 153+ build and unsigned temporary-install package,
+  with separate Gecko identity and unchanged Chrome artifacts.
+- Firefox uses an authenticated companion-to-tab fallback. Full embedded chat is
+  blocked by Firefox iframe API/storage isolation; native PDF tabs require explicit
+  PDF-file attachment. Neither signed distribution nor ESR support is qualified.
+- Fail-closed document identity/injection checks, companion navigation revocation,
+  Firefox shortcut settings and gesture-safe service-permission restoration.
+
 ## 0.3.0
 
 - Direct GitHub Releases ZIP downloads, SHA-256 checksums and a manual update link.

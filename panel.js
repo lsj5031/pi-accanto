@@ -22,10 +22,15 @@ import { openAttachments } from './attachments.js';
 import { attachmentUI } from './attachments-ui.js';
 import { backupUI, renderArchive, snapshotChat } from './backup-ui.js';
 import { getArchive, listArchives } from './archives.js';
+import { injectedDocument } from './document-identity.js';
+import { hostPermission } from './host-permission.js';
 
 const context = BACKGROUND_CONTEXT;
 const $ = (id) => document.getElementById(id);
 const embedded = location.pathname.endsWith('/companion.html');
+const firefox = Boolean(chrome.runtime.getManifest().browser_specific_settings?.gecko);
+const nativePdfFallback = 'Firefox’s native PDF viewer cannot be read by Accanto. Open Accanto in a tab and use + to attach the PDF file instead. Restricted pages also cannot be read.';
+const localFileHelp = firefox ? nativePdfFallback : 'For local PDFs, enable Allow access to file URLs in Pi Accanto’s details at chrome://extensions, then return to the PDF and try again.';
 let reconnectPending = false;
 let root;
 let harness;
@@ -151,7 +156,7 @@ function websiteAccessButton(source) {
     if (!ownsConversation || sources.get(source.url) !== source) return;
     allow.disabled = true;
     try {
-      const granted = await chrome.permissions.request({ origins: [`${new URL(source.url).origin}/*`] });
+      const granted = await chrome.permissions.request({ origins: [hostPermission(source.url)] });
       if (!granted) throw new Error('Host access was declined.');
       if (!ownsConversation || sources.get(source.url) !== source) return;
       await showSources();
@@ -162,7 +167,7 @@ function websiteAccessButton(source) {
 
 async function showSources() {
   await Promise.all([...sources.values()].map(async source => {
-    source.access = await chrome.permissions.contains({ origins: [`${new URL(source.url).origin}/*`] });
+    source.access = await chrome.permissions.contains({ origins: [hostPermission(source.url)] });
   }));
   if (!sources.size) showSearchFallback(null);
   $('sources').hidden = !sources.size;
@@ -474,15 +479,28 @@ function render(view) {
 }
 
 async function inTarget(func, args = []) {
+  const signal = submissionController?.signal;
+  signal?.throwIfAborted();
   if (!ownsConversation) throw new Error('Continue this conversation in the active Pi Accanto panel.');
   if (!attachment) throw new Error('No tab attached to this conversation.');
   if (attachment.session !== browserSession) throw new Error('The attached tab belongs to a previous browser session. Choose Use this page to attach again.');
   const tab = await chrome.tabs.get(attachment.id);
+  signal?.throwIfAborted();
   if (tab.status === 'loading') throw new Error('The attached document is still loading. Wait for it to finish and try again.');
-  if (attachment.url.startsWith('file:') && !await chrome.extension.isAllowedFileSchemeAccess()) throw new Error('For local PDFs, enable Allow access to file URLs in Pi Accanto’s details at chrome://extensions, then return to the PDF and try again.');
-  const results = await chrome.scripting.executeScript({ target: { tabId: attachment.id }, func, args: [attachment.origin, attachment.url, ...args] });
-  if (results[0].result?.error) throw new Error(results[0].result.error);
-  return results[0].result;
+  if ((attachment.url.startsWith('file:') && tab.url !== attachment.url) || (/^https?:/.test(attachment.url) && new URL(tab.url).origin !== attachment.origin)) throw new Error('The attached tab moved to another site or local file. Choose Use this page to attach it explicitly.');
+  if (attachment.url.startsWith('file:') && !await chrome.extension.isAllowedFileSchemeAccess()) throw new Error(localFileHelp);
+  // Main-page chats intentionally follow same-origin navigation. Bind each
+  // operation to the current browser-issued document, not a stale attach-time
+  // ID or a tab-only read. Explicit additional sources remain pinned until reselection.
+  const identity = injectedDocument(await chrome.scripting.executeScript({ target: { tabId: attachment.id }, func: pageIdentity, args: [attachment.origin, attachment.url] }));
+  signal?.throwIfAborted();
+  if (!ownsConversation) throw new Error('Conversation moved while reading.');
+  if (func === pageIdentity) return { ...identity.result, documentId: identity.documentId };
+  const results = await chrome.scripting.executeScript({ target: { tabId: attachment.id, documentIds: [identity.documentId] }, func, args: [attachment.origin, attachment.url, ...args] })
+    .catch(() => { throw new Error('The attached document changed while reading or website access was removed. Choose Use this page to attach it again.'); });
+  signal?.throwIfAborted();
+  if (!ownsConversation) throw new Error('Conversation moved while reading.');
+  return injectedDocument(results, identity.documentId).result;
 }
 
 function pageIdentity(origin, url) {
@@ -509,7 +527,7 @@ async function showAttachment() {
   let needsAccess = false;
   if (!webResearch && /^https?:/.test(current?.url ?? '')) {
     try {
-      await chrome.scripting.executeScript({ target: { tabId: current.id }, func: pageIdentity, args: [null] });
+      injectedDocument(await chrome.scripting.executeScript({ target: { tabId: current.id }, func: pageIdentity, args: [null] }));
     } catch { needsAccess = true; }
   }
   if (!ownsConversation || revision !== attachmentRefresh || attachment !== target) return;
@@ -540,24 +558,27 @@ async function attachCurrent(preferConversation = false, signal) {
   if (tab.status === 'loading') throw new Error('The current document is still loading. Wait for it to finish and try again.');
   const fileAccess = await chrome.extension.isAllowedFileSchemeAccess();
   signal?.throwIfAborted();
-  if (tab.url?.startsWith('file:') && !fileAccess) throw new Error('For local PDFs, enable Allow access to file URLs in Pi Accanto’s details at chrome://extensions, then return to the PDF and try again.');
+  if (tab.url?.startsWith('file:') && !fileAccess) throw new Error(localFileHelp);
   let page;
+  let documentId;
   try {
     const results = await chrome.scripting.executeScript({ target: { tabId: tab.id }, func: pageIdentity, args: [null] });
     signal?.throwIfAborted();
-    page = results[0].result;
+    const identity = injectedDocument(results);
+    page = identity.result;
+    documentId = identity.documentId;
   } catch {
     signal?.throwIfAborted();
     await showAttachment();
-    throw new Error('Choose Allow this site in Accanto, then try again. You can also grant temporary access with the toolbar action.');
+    throw new Error(firefox ? `${nativePdfFallback} For normal webpages, choose Allow this site or try the toolbar action.` : 'Choose Allow this site in Accanto, then try again. You can also grant temporary access with the toolbar action.');
   }
   if (!/^(https?:|file:)/.test(page.url)) throw new Error('This viewer URL is unsupported. Open the original PDF directly in an http(s) or file tab.');
   if (page.url.startsWith('file:') && !page.pdf) throw new Error('Only PDF documents are supported in local file tabs.');
-  if (attachment?.id === tab.id && attachment.session === browserSession && attachment.origin === page.origin && (!page.url.startsWith('file:') || attachment.url === page.url)) {
+  if (attachment?.id === tab.id && attachment.documentId === documentId && attachment.session === browserSession && attachment.origin === page.origin && (!page.url.startsWith('file:') || attachment.url === page.url)) {
     await showAttachment();
     return;
   }
-  const target = { id: tab.id, ...page, title: page.title || tab.title || page.url, session: browserSession };
+  const target = { id: tab.id, ...page, documentId, title: page.title || tab.title || page.url, session: browserSession };
   // A supported context head keeps old tasks in durable history, outside the next model request.
   await writeTarget({ target });
   signal?.throwIfAborted();
@@ -580,6 +601,7 @@ async function writeTarget(data) {
 }
 
 async function start() {
+  if (firefox) $('update-help').textContent = 'Experimental Firefox build. Stop work and back up chats before updating. Reload the temporary add-on at about:debugging#/runtime/this-firefox, then refresh host tabs. Temporary installation disappears on browser restart. Ordinary persistent installation requires a Mozilla-signed XPI. Backups exclude settings and keys; reenter session-only keys. Downgrades are unsupported.';
   const activateOnReady = location.hash === '#continue';
   const parameters = new URLSearchParams(location.search);
   const settingsOnly = !embedded && parameters.has('settings');
@@ -613,7 +635,8 @@ async function start() {
     }
   });
   $('customize-shortcuts').addEventListener('click', () => {
-    void chrome.tabs.create({ url: 'chrome://extensions/shortcuts' });
+    if (firefox) void chrome.commands.openShortcutSettings();
+    else void chrome.tabs.create({ url: 'chrome://extensions/shortcuts' });
   });
   const statusChanged = () => {
     $('status').dataset.quiet = String(!busy && /^(Ready|Reply complete|Check complete|Attached|Chat reset|Web research)/.test($('status').textContent));
@@ -713,13 +736,14 @@ async function start() {
   $('forget-model-key').hidden = !credential.apiKey;
   let allSitesAllowed = false;
   let accessPending = false;
+  let reconnectServices;
   const showAccess = async (updateStatus = !accessPending) => {
     allSitesAllowed = await chrome.permissions.contains({ origins: allSiteOrigins });
-    $('all-sites').textContent = allSitesAllowed ? 'Remove all-site access' : 'Allow all websites';
+    $('all-sites').textContent = reconnectServices ? 'Restore service access' : allSitesAllowed ? 'Remove all-site access' : 'Allow all websites';
     if (updateStatus && !accessPending) {
       $('access-status').textContent = allSitesAllowed
         ? 'All websites allowed. Removing this may require allowing individual sites again.'
-        : 'Site-by-site access. Chrome remembers each site you allow.';
+        : 'Site-by-site access. Your browser remembers each site you allow.';
     }
   };
   await showAccess();
@@ -729,17 +753,23 @@ async function start() {
     $('all-sites').disabled = true;
     $('access-status').textContent = allSitesAllowed
       ? 'Removing all-site access…'
-      : 'Confirm website access in Chrome’s permission dialog.';
+      : 'Confirm website access in your browser’s permission dialog.';
     try {
       // Keep the permission request in the original click's user gesture.
-      if (allSitesAllowed) {
+      if (reconnectServices) {
+        if (!await chrome.permissions.request({ origins: reconnectServices })) throw new Error('Service access declined. Choose Restore service access to try again.');
+        reconnectServices = undefined;
+      } else if (allSitesAllowed) {
         const { searchProvider = 'exa' } = { ...await chrome.storage.local.get('searchProvider'), ...await chrome.storage.session.get('searchProvider') };
-        const services = [...chrome.runtime.getManifest().host_permissions.filter(origin => /^https?:/.test(origin)), ...(endpoint ? [`${new URL(endpoint).origin}/*`] : []), searchOrigins[searchProvider]];
+        const services = [...chrome.runtime.getManifest().host_permissions.filter(origin => /^https?:/.test(origin)), ...(endpoint ? [hostPermission(endpoint)] : []), searchOrigins[searchProvider]];
         await chrome.permissions.remove({ origins: allSiteOrigins });
-        // Chrome removes covered narrow grants too, even required model/API
-        // hosts. Restore service access without restoring arbitrary websites.
-        $('access-status').textContent = 'Confirm model and search service access in Chrome to keep them connected.';
-        if (!await chrome.permissions.request({ origins: [...new Set(services)] })) throw new Error('Website access removed. Reconnect your model and save your search provider to restore service access.');
+        // Removing broad access can remove covered service grants too. A
+        // second click keeps Firefox's permission request in a user gesture.
+        reconnectServices = [...new Set(services)];
+        await showAccess(false);
+        await showAttachment();
+        $('access-status').textContent = 'Website access removed. Choose Restore service access to reconnect only your model and search services.';
+        return;
       } else if (!await chrome.permissions.request({ origins: allSiteOrigins })) throw new Error('All-site access declined. You can still allow individual sites.');
       accessPending = false;
       await showAccess();
@@ -752,6 +782,7 @@ async function start() {
   chrome.permissions.onRemoved.addListener(accessChanged);
   const searchConfig = { ...await chrome.storage.local.get('searchProvider'), ...await chrome.storage.session.get('searchProvider') };
   const searchCredentials = { tinyfish: await readCredential('tinyfishKey'), brave: await readCredential('braveKey') };
+  for (const [provider, credential] of Object.entries(searchCredentials)) credential.available = Boolean(credential[`${provider}Key`]);
   const searchNames = { exa: 'Exa', tinyfish: 'TinyFish', brave: 'Brave' };
   $('search-provider').value = searchNames[searchConfig.searchProvider] ? searchConfig.searchProvider : 'exa';
   $('search-state').textContent = `· ${searchNames[$('search-provider').value]}`;
@@ -787,13 +818,15 @@ async function start() {
       } else {
         if (provider === 'brave' && !$('brave-storage').checked) throw new Error('A Brave plan with storage rights is required because conversation history is saved.');
         const keyField = `${provider}Key`;
-        const key = $(`${provider}-key`).value.trim() || (await readCredential(keyField))[keyField];
-        if (!key) throw new Error(`Enter your ${searchNames[provider]} API key.`);
+        const enteredKey = $(`${provider}-key`).value.trim();
+        if (!enteredKey && !searchCredentials[provider].available) throw new Error(`Enter your ${searchNames[provider]} API key.`);
         const origin = searchOrigins[provider];
         if (!await chrome.permissions.request({ origins: [origin] })) throw new Error(`${searchNames[provider]} host access was declined.`);
+        const key = enteredKey || (await readCredential(keyField))[keyField];
+        if (!key) throw new Error(`Enter your ${searchNames[provider]} API key.`);
         const remember = $('remember-search-key').checked;
         await saveCredential(keyField, { [keyField]: key, ...(provider === 'brave' ? { braveStorage: true } : {}) }, remember);
-        searchCredentials[provider] = { remember };
+        searchCredentials[provider] = { remember, available: true };
         await chrome.storage.local.set({ searchProvider: provider });
         await chrome.storage.session.set({ searchProvider: provider });
         $(`${provider}-key`).value = '';
@@ -843,7 +876,7 @@ async function start() {
   $('provider-notice').textContent = scripted ? 'Offline check' : modelId || 'Set up model';
   const configuredMessage = `Model configured: ${modelId}. ${credential.remember ? 'Key remembered on this device.' : 'Key available for this browser session only.'} Saving checks the model catalog only, not chat access.`;
   connectionStatus(scripted ? 'offline' : apiKey ? 'configured' : 'disconnected', scripted ? 'Offline check mode.' : apiKey ? configuredMessage : 'Not configured. Enter your API key, then Connect.');
-  const modelOrigin = endpoint ? `${new URL(endpoint).origin}/*` : undefined;
+  const modelOrigin = endpoint ? hostPermission(endpoint) : undefined;
   const missingModelAccess = `Model server access is missing for ${endpoint ? new URL(endpoint).host : 'your endpoint'}. Allow model access to reconnect.`;
   const refreshModelAccess = async () => {
     const allowed = scripted || !apiKey || !modelOrigin || await chrome.permissions.contains({ origins: [modelOrigin] });
@@ -936,7 +969,7 @@ async function start() {
         if (!nextModel) throw new Error('Enter a model ID.');
         const key = $('api-key').value.trim() || (nextEndpoint === endpoint && nextApi === modelApi ? apiKey : '');
         if (!key) throw new Error('Enter this endpoint’s API key. Saved keys are not reused for a different endpoint or API format.');
-        if (!await chrome.permissions.request({ origins: [`${url.origin}/*`] })) throw new Error('Model server access was declined.');
+        if (!await chrome.permissions.request({ origins: [hostPermission(url)] })) throw new Error('Model server access was declined.');
         connectionStatus('checking', 'Checking model endpoint…');
         let path = '/models';
         let headers = { Authorization: `Bearer ${key}` };
@@ -1113,7 +1146,7 @@ async function start() {
           try {
             result = { title: page.title || page.url, url: page.url, untrusted: true, ...await readPdf(page.url, start_page, toolContext.abortSignal, { visual, page_count, vision: imageInput }) };
             const current = await inTarget(pageIdentity);
-            if (current.url !== page.url) throw new Error('The PDF tab changed while reading. Try again on the attached document.');
+            if (current.url !== page.url || current.documentId !== page.documentId) throw new Error('The PDF tab changed while reading. Try again on the attached document.');
           } finally {
             if (busy) $('status').textContent = scripted ? 'Running offline check…' : 'Working on this tab…';
           }
@@ -1185,7 +1218,7 @@ async function start() {
     $('allow-site').disabled = true;
     try {
       // Request directly from the click, before any await loses the user gesture.
-      const granted = await chrome.permissions.request({ origins: [`${requested.origin}/*`] });
+      const granted = await chrome.permissions.request({ origins: [hostPermission(requested.origin)] });
       if (!ownsConversation) return;
       if (!granted) throw new Error('Site access declined. You can try again or use temporary access from the toolbar.');
       const [current] = await chrome.tabs.query({ active: true, currentWindow: true });

@@ -1,4 +1,5 @@
 import { listArchives } from './archives.js';
+import { validDocumentId } from './document-identity.js';
 
 chrome.action.onClicked.addListener(openAccanto);
 chrome.commands.onCommand.addListener((command, tab) => { void handleCommand(command, tab); });
@@ -30,7 +31,8 @@ async function openCompanion(tab, action) {
     if (companionHiddenSites.includes(origin)) {
       await chrome.storage.local.set({ companionHiddenSites: companionHiddenSites.filter(site => site !== origin) });
     }
-    await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ['companion-host.js'] });
+    const injected = await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ['companion-host.js'] });
+    if (!injected?.length || injected[0].error || !validDocumentId(injected[0].documentId)) throw new Error('Companion injection unavailable');
     const result = await chrome.tabs.sendMessage(tab.id, { type: 'companion-open', action }, { frameId: 0 });
     if (!result?.ok) throw new Error('Companion unavailable');
   } catch {
@@ -57,7 +59,9 @@ function syncCompanions() {
       if (!/^https?:/.test(tab.url || '')) continue;
       // Chrome checks both durable grants and a still-valid toolbar activeTab
       // grant. An unrelated permission change must not remove the latter.
-      await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ['companion-host.js'] })
+      await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ['companion-host.js'] }).then(results => {
+        if (!results?.length || results[0].error || !validDocumentId(results[0].documentId)) throw new Error('Companion injection unavailable');
+      })
         .catch(() => chrome.tabs.sendMessage(tab.id, { type: 'companion-remove' }).catch(() => {}));
     }
   });
@@ -73,7 +77,7 @@ void syncCompanions();
 const companionUrl = chrome.runtime.getURL('companion.html');
 const panelUrl = chrome.runtime.getURL('panel.html');
 const challenges = new Map();
-const isCompanion = sender => sender.url?.split('?')[0] === companionUrl && Number.isInteger(sender.tab?.id) && sender.frameId > 0;
+const isCompanion = sender => sender.url?.split('?')[0] === companionUrl && Number.isInteger(sender.tab?.id) && sender.frameId > 0 && validDocumentId(sender.documentId);
 
 async function trustedPanel(sender) {
   if (sender.url?.split('?')[0] === panelUrl) return true;
@@ -85,34 +89,96 @@ async function trustedPanel(sender) {
 // Serialize catalog and tab-map updates in the service worker, including first
 // initialization. Independent panels must never race to claim a tab or session.
 let updates = Promise.resolve();
+function revokeCompanions(tabId) {
+  for (const pending of challenges.values()) if (pending.tabId === tabId) pending.finish({ error: 'The host document changed. Open Accanto again.' });
+  updates = updates.catch(() => {}).then(async () => {
+    const { companionDocuments = {} } = await chrome.storage.session.get('companionDocuments');
+    for (const [id, tab] of Object.entries(companionDocuments)) if (tab === tabId) delete companionDocuments[id];
+    await chrome.storage.session.set({ companionDocuments });
+  });
+}
+chrome.tabs.onUpdated.addListener((tabId, change, tab) => {
+  if (change.status === 'loading' || change.url) revokeCompanions(tabId);
+  if (/^https?:/.test(change.url || '') && tab?.status === 'complete') {
+    // Same-document navigation has no pagehide. Destroy its embedded runtime,
+    // then restore only a launcher where the browser still grants access.
+    void chrome.tabs.sendMessage(tabId, { type: 'companion-remove' }, { frameId: 0 }).catch(() => {})
+      .then(() => syncCompanions());
+  }
+});
+chrome.tabs.onRemoved.addListener(revokeCompanions);
 chrome.runtime.onMessage.addListener((message, sender, reply) => {
   if (sender.id !== chrome.runtime.id) return;
+  if (message.type === 'companion-restore' && sender.frameId === 0 && Number.isInteger(sender.tab?.id) && /^https?:/.test(sender.url || '')) {
+    void syncCompanions();
+    return;
+  }
+  if (message.type === 'companion-revoke' && sender.frameId === 0 && Number.isInteger(sender.tab?.id) && /^https?:/.test(sender.url || '')) {
+    revokeCompanions(sender.tab.id);
+    reply({ ok: true });
+    return;
+  }
+  if (message.type === 'companion-authorize' && !isCompanion(sender)) {
+    reply({ error: 'Open Accanto using its companion button. Exact document identity is required.' });
+    return;
+  }
   if (message.type === 'companion-authorize' && isCompanion(sender)) {
     // A public iframe URL is not an identity. Challenge the exact WindowProxy
     // retained by our isolated content script, then match its document ID.
     const challenge = crypto.randomUUID();
-    const finish = (result) => { clearTimeout(challenges.get(challenge)?.timer); challenges.delete(challenge); reply(result); };
+    const finish = (result) => {
+      const pending = challenges.get(challenge);
+      if (!pending) return;
+      clearTimeout(pending.timer); challenges.delete(challenge); reply(result);
+    };
     const timer = setTimeout(() => finish({ error: 'Open Accanto from its companion button.' }), 5000);
     challenges.set(challenge, { documentId: sender.documentId, tabId: sender.tab.id, finish, timer });
-    void chrome.tabs.sendMessage(sender.tab.id, { type: 'companion-challenge', challenge }, { frameId: 0 })
+    const confirm = async () => {
+      const pending = challenges.get(challenge);
+      if (!pending) return;
+      updates = updates.catch(() => {}).then(async () => {
+        if (challenges.get(challenge) !== pending) return;
+        const { companionDocuments = {} } = await chrome.storage.session.get('companionDocuments');
+        if (challenges.get(challenge) !== pending) return;
+        for (const [id, tabId] of Object.entries(companionDocuments)) if (tabId === sender.tab.id) delete companionDocuments[id];
+        companionDocuments[sender.documentId] = sender.tab.id;
+        await chrome.storage.session.set({ companionDocuments });
+        if (challenges.get(challenge) !== pending) {
+          delete companionDocuments[sender.documentId];
+          await chrome.storage.session.set({ companionDocuments });
+          return;
+        }
+        pending.finish({ tabId: sender.tab.id });
+      });
+      await updates;
+    };
+    challenges.get(challenge).confirm = confirm;
+    void chrome.tabs.sendMessage(sender.tab.id, { type: 'companion-challenge', challenge }, { frameId: 0 }).then(result => {
+      // Firefox can identify the exact retained frame without privileged
+      // postMessage source semantics. Never accept a tab/frame/URL substitute.
+      if (result?.documentId === sender.documentId) return confirm();
+    })
       .catch(() => finish({ error: 'Companion unavailable. Open Accanto from the toolbar.' }));
     return true;
   }
   if (message.type === 'companion-confirm' && isCompanion(sender)) {
     const pending = challenges.get(message.challenge);
     if (!pending || pending.documentId !== sender.documentId || pending.tabId !== sender.tab.id) return;
-    updates = updates.catch(() => {}).then(async () => {
-      const { companionDocuments = {} } = await chrome.storage.session.get('companionDocuments');
-      for (const [id, tabId] of Object.entries(companionDocuments)) if (tabId === sender.tab.id) delete companionDocuments[id];
-      companionDocuments[sender.documentId] = sender.tab.id;
-      await chrome.storage.session.set({ companionDocuments });
-      pending.finish({ tabId: sender.tab.id });
-      reply({ ok: true });
-    });
+    void pending.confirm().then(() => reply({ ok: true }), () => reply({ error: 'Companion authorization failed.' }));
     return true;
   }
   if (message.type === 'companion-tab' && sender.frameId === 0 && /^https?:/.test(sender.url || '')) {
     openAgentTab(sender.tab.id, true).then(() => reply({ ok: true }), error => reply({ error: error.message }));
+    return true;
+  }
+  if (['companion-open-panel', 'companion-fallback-ready', 'companion-fallback-close'].includes(message.type)) {
+    void (async () => {
+      await updates;
+      if (!isCompanion(sender) || !await trustedPanel(sender)) throw new Error('This window is not an authorized Accanto panel.');
+      if (message.type === 'companion-open-panel') await openAgentTab(sender.tab.id);
+      else await chrome.tabs.sendMessage(sender.tab.id, { type: message.type === 'companion-fallback-close' ? 'companion-close' : 'companion-ready' }, { frameId: 0 });
+      return { ok: true };
+    })().then(reply, error => reply({ error: error.message }));
     return true;
   }
   if (message.type !== 'conversation') return;

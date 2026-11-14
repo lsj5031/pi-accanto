@@ -6,6 +6,16 @@ services are separate recipients with their own retention and privacy policies.
 Do not use sensitive pages unless you are comfortable sending relevant content
 to those services.
 
+The experimental Firefox build uses a standalone extension tab. Its website
+companion offers an authenticated open-tab fallback, not an embedded agent,
+because Firefox partitions embedded extension storage and ownership. Firefox
+and Chrome profiles do not share Accanto stores. Firefox private browsing is
+disabled; temporary developer installation is not a durable backup. The Firefox
+manifest declares potential website content, browsing activity, search terms,
+personal communications and authentication-information transmissions to the
+configured services. This is not a Mozilla policy approval. See
+[Firefox scope and installation](docs/verification/firefox.md).
+
 ## What leaves the browser
 
 ### Portable backups
@@ -100,8 +110,10 @@ or reloading the page destroys that runtime; use **Open in a tab** for longer wo
   already sent to providers, and is not forensic erasure of browser/OS backups.
   Imported files are not uploaded to a separate file-hosting or OCR service.
 - Revoke host permissions from Chrome's extension details/site-access settings.
-  **Remove all-site access** returns to narrower service/site grants and can ask
-  for confirmation to keep model/search services working.
+  In Firefox use its extension permissions settings. **Remove all-site access**
+  removes broad grants; choose **Restore service access** separately to approve
+  only configured model/search services in a fresh user gesture. Individual
+  website grants may need approval again.
 - **Hide on this site** removes the companion from that origin without revoking
   its Chrome host grant or erasing history. Restore hidden companions in Settings.
 - Use **Forget key** for the selected optional search provider, or restart the
