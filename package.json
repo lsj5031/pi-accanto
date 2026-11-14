@@ -15,6 +15,10 @@
   "scripts": {
     "build": "node build.mjs",
     "package": "npm run build && node package-extension.mjs",
+    "build:firefox": "node build.mjs --browser=firefox",
+    "package:firefox": "npm run build:firefox && node package-extension.mjs --browser=firefox",
+    "test:firefox": "node --test --test-concurrency=1 test-firefox-smoke.mjs test-firefox-security.mjs test-firefox-features.mjs test-firefox-pdf.mjs",
+    "test:firefox:distribution": "node --test test-firefox-distribution.mjs",
     "test:distribution": "node --test test-distribution.mjs",
     "test:permissions": "node --test test-permissions.mjs",
     "test:panel-state": "node --test test-panel-state.mjs",
@@ -47,6 +51,7 @@
   "devDependencies": {
     "esbuild": "0.25.12",
     "playwright": "1.56.1",
+    "selenium-webdriver": "4.52.0",
     "tailwindcss": "4.3.1"
   }
 }

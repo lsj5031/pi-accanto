@@ -20,6 +20,10 @@ jobs:
       - run: npm ci
       - run: npx playwright install --with-deps chromium
       - run: npm run package
+      - name: Build and validate unsigned Firefox package (no browser qualification)
+        run: |
+          npm run package:firefox
+          npm run test:firefox:distribution
       - run: npm run test:distribution
       - run: npm run test:release
       - run: npm run test:permissions
@@ -30,7 +34,14 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: extension-download
-          path: artifacts/pi-accanto-*.zip
+          path: |
+            artifacts/pi-accanto-*.zip
+            !artifacts/pi-accanto-*-firefox.zip
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: firefox-unsigned-download
+          path: artifacts/pi-accanto-*-firefox.zip
           if-no-files-found: error
       - uses: actions/upload-artifact@v4
         if: failure()
