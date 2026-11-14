@@ -1,8 +1,6 @@
 import assert from 'node:assert/strict';
-import { writeFile } from 'node:fs/promises';
-import { resolve } from 'node:path';
 import { launchFirefox, By } from './test/firefox-browser.mjs';
-import { fixtureServer, scripted, ready, code, tabId } from './test/firefox-fixtures.mjs';
+import { fixtureServer, scripted, tabId } from './test/firefox-fixtures.mjs';
 
 const fixture = await fixtureServer();
 let h;
@@ -31,45 +29,11 @@ try {
   const shadow = await h.driver.findElement(By.css('[data-accanto-companion]')).getShadowRoot();
   await (await shadow.findElement(By.css('.launcher'))).click();
   await h.driver.switchTo().frame(await shadow.findElement(By.css('iframe')));
-  await h.wait(() => document.body.dataset.embedded === 'true', 'Exact legitimate companion authorizes');
-  let startupError;
-  try { await ready(h); }
-  catch (error) {
-    startupError = new Error(`Authorized companion did not start: ${await h.text('#status')}`, { cause: error });
-    console.error(startupError.message);
-  }
-  if (!startupError) {
-    let embeddedState;
-    try {
-      assert.match(await code(h, 'text(6 * 7);'), /42/);
-      const conversation = await h.evaluate(() => new URL(location.href).searchParams.get('conversation'));
-      assert.ok(conversation, 'Authenticated iframe has a real conversation');
-      embeddedState = await h.evaluate(async () => ({
-        url: location.href, locks: await navigator.locks.query(),
-        databases: (await indexedDB.databases()).map(database => database.name),
-      }));
-      await h.driver.switchTo().defaultContent();
-      await h.driver.switchTo().window(controller);
-      await h.open(`panel.html?conversation=${conversation}&tab=${id}`);
-      await h.wait(() => document.getElementById('panel-owner')?.hidden === false, 'Iframe and standalone share the ownership lock');
-      await h.click('#continue-here');
-      await ready(h);
-      assert.match(await h.text('#transcript'), /6 \* 7/, 'Standalone sees the iframe IndexedDB transcript');
-      await h.driver.switchTo().window(page);
-      const liveShadow = await h.driver.findElement(By.css('[data-accanto-companion]')).getShadowRoot();
-      await h.driver.switchTo().frame(await liveShadow.findElement(By.css('iframe')));
-      await h.wait(() => document.getElementById('send')?.disabled, 'Iframe relinquishes ownership');
-    } catch (error) {
-      startupError = error;
-      console.error('Embedded/standalone compatibility gate:', error.message);
-      await h.screenshot('ownership-partition');
-      const standaloneState = await h.evaluate(async () => ({
-        url: location.href, locks: await navigator.locks.query(),
-        databases: (await indexedDB.databases()).map(database => database.name),
-      })).catch(() => null);
-      await writeFile(resolve(h.artifacts, 'ownership-partition.json'), JSON.stringify({ embeddedState, standaloneState }, null, 2));
-    }
-  }
+  // Embedded Firefox chat is deliberately unsupported. The authenticated frame
+  // is only a launcher; the companion-to-tab and ownership behavior is exercised
+  // by test-browser-fallback.mjs, not an assumed shared iframe storage domain.
+  await h.wait(() => document.body.dataset.companionFallback === 'true', 'Exact legitimate fallback authorizes');
+  assert.equal(await h.evaluate(() => !!document.getElementById('prompt')), false);
   await h.driver.switchTo().defaultContent();
   await h.driver.switchTo().window(page);
   await h.screenshot('authorized-companion');
@@ -95,6 +59,11 @@ try {
   assert.notEqual(await h.evaluate(() => document.body.dataset.embedded), 'true');
   const rogueBroker = await h.evaluate(() => chrome.runtime.sendMessage({ type: 'conversation', tabId: 999999 }));
   assert.match(rogueBroker.error, /not an authorized/i);
+  const handles = await h.driver.getAllWindowHandles();
+  for (const type of ['companion-open-panel', 'companion-fallback-ready', 'companion-fallback-close']) {
+    assert.match((await h.evaluate(type => chrome.runtime.sendMessage({ type }), type)).error, /not an authorized/i);
+  }
+  assert.deepEqual(await h.driver.getAllWindowHandles(), handles, 'Rogue actions cannot open a panel');
   console.log('Verified legitimate document authorization and rogue iframe rejection');
   await h.driver.switchTo().defaultContent();
   await h.screenshot('rogue-frame-rejected');
@@ -120,9 +89,24 @@ try {
   }, 'Reload revokes old companion authorization');
   const afterReload = await h.evaluate(async () => (await chrome.storage.session.get('companionDocuments')).companionDocuments || {});
   for (const key of Object.keys(documents)) assert.equal(afterReload[key], undefined, 'Reload revokes old companion authorization');
+  await h.driver.switchTo().window(page);
+  await h.wait(() => !!document.querySelector('[data-accanto-companion]'), 'Reload creates a fresh launcher');
+  const fresh = await h.driver.findElement(By.css('[data-accanto-companion]')).getShadowRoot();
+  await (await fresh.findElement(By.css('.launcher'))).click();
+  await h.driver.switchTo().frame(await fresh.findElement(By.css('iframe')));
+  await h.wait(() => document.body.dataset.companionFallback === 'true', 'Fresh document authorizes independently');
+  await h.driver.switchTo().defaultContent();
+  await h.driver.switchTo().window(controller);
+  const liveDocuments = await h.evaluate(async () => (await chrome.storage.session.get('companionDocuments')).companionDocuments);
+  assert.ok(Object.keys(liveDocuments).length, 'Revocation exercises a live authorization');
   // Genuine removal, not a stubbed permissions API.
   await h.evaluate(origin => chrome.permissions.remove({ origins: ['http://127.0.0.1/*', `${origin}/*`] }), fixture.origin);
   await h.wait(async () => !(await chrome.scripting.getRegisteredContentScripts()).some(script => script.matches.some(match => match.includes('127.0.0.1'))), 'Revocation unregisters fixture origin');
+  await h.evaluate(keys => { window.revokedDocuments = keys; }, Object.keys(liveDocuments));
+  await h.wait(async () => {
+    const { companionDocuments = {} } = await chrome.storage.session.get('companionDocuments');
+    return window.revokedDocuments.every(key => companionDocuments[key] === undefined);
+  }, 'Permission removal revokes the live exact-frame authorization');
   const revoked = await h.evaluate(async tabId => {
     try { return await chrome.scripting.executeScript({ target: { tabId }, func: () => document.title }); }
     catch (error) { return { error: String(error) }; }
@@ -132,8 +116,7 @@ try {
   await h.wait(() => !document.querySelector('[data-accanto-companion]'), 'Revocation removes the existing companion');
   await h.screenshot('permission-revoked');
   console.log('Verified stale-document rejection, reload authorization cleanup, and real permission revocation');
-  if (startupError) throw startupError;
-  console.log('PASS Firefox security: grant/injection failure, document IDs, legitimate iframe, rogue rejection, reload, revocation');
+  console.log('PASS Firefox security: grant/injection failure, exact fallback document, rogue broker/actions denied, stale targeting, reload and live permission revocation');
 } catch (error) {
   await h?.failure(error);
   process.exitCode = 1;

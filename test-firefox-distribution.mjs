@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { readFile } from 'node:fs/promises';
+import { readFile, readdir } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import test from 'node:test';
 
@@ -15,6 +15,23 @@ test('unsigned Firefox download preserves the built runtime and security boundar
   assert.ok(entries.includes('manifest.json'), 'Manifest must be at archive root');
   assert.equal(entries.some(entry => entry.startsWith('/') || entry.split('/').includes('..')), false);
   const packaged = file => execFileSync('unzip', ['-p', archive, file], { timeout: 10000, maxBuffer: 32 * 1024 * 1024 });
+  const files = async (directory, prefix = '') => {
+    const result = [];
+    for (const entry of await readdir(directory, { withFileTypes: true })) {
+      const name = `${prefix}${entry.name}`;
+      if (entry.isDirectory()) result.push(...await files(resolve(directory, entry.name), `${name}/`));
+      else {
+        assert.ok(entry.isFile(), `Unexpected non-file in distribution: ${name}`);
+        result.push(name);
+      }
+    }
+    return result;
+  };
+  const builtFiles = (await files(extension)).sort();
+  assert.deepEqual(entries.filter(entry => !entry.endsWith('/')).sort(), builtFiles, 'ZIP contains exactly the final distribution files');
+  for (const file of builtFiles) {
+    assert.ok(packaged(file).equals(await readFile(resolve(extension, file))), `${file} differs from final build`);
+  }
   assert.deepEqual(JSON.parse(packaged('manifest.json')), built);
   assert.equal(built.key, undefined, 'Chrome public key is not a Firefox runtime identity');
   assert.equal(built.background.service_worker, undefined);

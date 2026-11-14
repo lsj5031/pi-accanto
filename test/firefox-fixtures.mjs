@@ -64,7 +64,16 @@ export async function send(h, prompt) {
 export async function scripted(h) {
   await h.open('panel.html?settings=1');
   await h.wait(() => !!document.getElementById('installed-version')?.textContent, 'Settings loaded');
-  await h.evaluate(() => chrome.storage.local.set({ mode: 'scripted', modelConnection: { imageInput: true } }));
+  const previous = await h.evaluate(() => performance.timeOrigin);
+  await h.driver.executeScript('void chrome.storage.local.set({ mode: "scripted", modelConnection: { imageInput: true } });');
+  await h.driver.wait(async () => {
+    try { return await h.evaluate(previous => performance.timeOrigin !== previous, previous); }
+    catch (error) {
+      if (/context was destroyed|document.*unloaded/i.test(error.message)) return false;
+      throw error;
+    }
+  }, 10000, 'Mode change reloads the settings document');
+  await h.wait(() => !!document.getElementById('installed-version')?.textContent && document.getElementById('mode')?.value === 'scripted', 'Scripted settings reloaded');
 }
 export async function tabId(h, url) {
   return h.evaluate(async url => (await chrome.tabs.query({})).find(tab => tab.url === url)?.id, url);

@@ -138,14 +138,26 @@ missing outputs. The authorization checks drive production message handlers with
 controlled browser responses; they are not a substitute for real Firefox tests.
 Use disposable profiles and local synthetic endpoints for browser qualification.
 Do not run authenticated external-model checks or use personal browser profiles
-as part of the deterministic port gate. The separate Firefox harness integration
-must qualify the shipped artifact and document unsupported native/ESR coverage.
-After that harness is integrated, `node test-browser-fallback.mjs` checks the
-authenticated Firefox launcher-to-tab path, rogue-frame rejection, reload
-revocation and native-PDF file guidance. `ACCANTO_FIREFOX_HARNESS` can point to an
-absolute `test/firefox-browser.mjs` path in a separate read-only harness worktree;
-set `ACCANTO_FIREFOX_EXTENSION` to the actual unmodified `dist-firefox/` and
-`ACCANTO_ARTIFACT_DIR` to an output directory in your own worktree.
+as part of the deterministic port gate.
+
+`npm run test:browser-target` runs the focused build, main-document and
+authorization unit suites. `npm run test:firefox:distribution` validates the
+Firefox ZIP, and `npm run test:firefox` qualifies the actual unmodified
+`dist-firefox/` using Selenium and an installed Firefox 153+ and geckodriver.
+The harness never downloads either executable. Override discovery with absolute
+`ACCANTO_FIREFOX_BINARY` and `ACCANTO_GECKODRIVER` paths if needed.
+Set `ACCANTO_ARTIFACT_DIR` to a temporary evidence directory outside the checkout.
+
+The Firefox browser gate includes `test-browser-fallback.mjs`: authenticated
+launcher-to-tab opening, no embedded conversation runtime, source binding,
+exclusive standalone ownership, rogue-frame rejection, navigation/reload
+revocation and native-PDF file guidance. The security suite separately checks
+actual permission removal, exact document targeting and unauthorized broker/
+fallback actions. Feature/PDF suites retain real Wasm, cancellation, attachment,
+portable backup and local transport coverage. These are not embedded-chat tests.
+Optional grants use isolated browser test privileges; native dialog acceptance,
+toolbar/OS shortcut delivery and ESR remain unqualified. CI currently builds
+and validates the unsigned Firefox ZIP but does not run Firefox browser tests.
 
 `npm run test:research:live` adds real provider requests and live-model scenarios.
 Provide `ACCANTO_MODEL_ENDPOINT` (OpenAI-compatible base URL),

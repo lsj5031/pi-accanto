@@ -32,6 +32,7 @@ export async function launchFirefox(suite) {
     ...process.env.PATH.split(delimiter).map(path => resolve(path, 'firefox')),
   ], 'ACCANTO_FIREFOX_BINARY');
   const geckodriver = await executable(process.env.ACCANTO_GECKODRIVER, [
+    '/snap/firefox/current/usr/lib/firefox/geckodriver',
     ...process.env.PATH.split(delimiter).map(path => resolve(path, 'geckodriver')),
   ], 'ACCANTO_GECKODRIVER');
   const hashes = {};
@@ -90,6 +91,7 @@ export async function launchFirefox(suite) {
           .then(value => done({ ok: true, value: value ?? null }),
             error => done({ ok: false, error: String(error?.stack || error) }));
       `, ...args);
+      if (!result) throw new Error('Firefox script context was destroyed during evaluation');
       if (!result.ok) throw new Error(result.error);
       return result.value;
     };

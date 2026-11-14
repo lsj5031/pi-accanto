@@ -7,12 +7,15 @@ const harness = process.env.ACCANTO_FIREFOX_HARNESS
   ? pathToFileURL(process.env.ACCANTO_FIREFOX_HARNESS).href
   : new URL('./test/firefox-browser.mjs', import.meta.url).href;
 const { launchFirefox, By } = await import(harness);
-const { fixtureServer, scripted, ready, tabId } = await import(new URL('./firefox-fixtures.mjs', harness));
+const { fixtureServer, scripted, ready, code, tabId } = await import(new URL('./firefox-fixtures.mjs', harness));
 const fixture = await fixtureServer();
 let h;
 try {
   h = await launchFirefox('fallback');
   await scripted(h);
+  const controller = await h.driver.getWindowHandle();
+  const catalogBefore = await h.evaluate(async () => (await chrome.storage.local.get('conversations')).conversations);
+  const databasesBefore = await h.evaluate(async () => (await indexedDB.databases()).map(db => db.name).sort());
   await h.grantOrigins([`${fixture.origin}/*`]);
   const hostTab = await h.newTab(`${fixture.origin}/main`);
   await h.wait(() => !!document.querySelector('[data-accanto-companion]'), 'Website launcher');
@@ -22,6 +25,20 @@ try {
   await h.wait(() => document.body.dataset.companionFallback === 'true', 'Authenticated Firefox fallback');
   assert.equal(await h.evaluate(() => !!document.getElementById('prompt')), false);
   assert.equal(await h.evaluate(() => performance.getEntriesByType('resource').some(entry => /\/panel\.js(?:$|\?)/.test(entry.name))), false, 'No agent imports in the isolated iframe');
+  const embeddedStorage = await h.evaluate(async () => ({
+    databases: await indexedDB.databases(), locks: await navigator.locks.query(),
+  }));
+  // Firefox may expose the archive catalog already opened by the background or
+  // Settings. Its existence is not an embedded runtime; no new DB may appear.
+  assert.deepEqual(embeddedStorage.databases.map(db => db.name).sort(), databasesBefore, 'Launcher creates no conversation database');
+  assert.deepEqual(embeddedStorage.locks.held, [], 'Launcher owns no embedded conversation lock');
+  assert.deepEqual(embeddedStorage.locks.pending, []);
+  await h.driver.switchTo().defaultContent();
+  await h.screenshot('authenticated-fallback');
+  await h.driver.switchTo().window(controller);
+  assert.deepEqual(await h.evaluate(async () => (await chrome.storage.local.get('conversations')).conversations), catalogBefore, 'Authentication alone starts no conversation');
+  await h.driver.switchTo().window(hostTab);
+  await h.driver.switchTo().frame(await shadow.findElement(By.css('iframe')));
   await h.click('button:nth-of-type(2)');
   await h.driver.switchTo().defaultContent();
   await h.driver.wait(async () => (await shadow.findElement(By.css('.launcher'))).isDisplayed(), 10000, 'Fallback close restores launcher');
@@ -37,6 +54,18 @@ try {
   await ready(h);
   const id = await tabId(h, `${fixture.origin}/main`);
   assert.equal(Number(await h.evaluate(() => new URL(location.href).searchParams.get('tab'))), id);
+  assert.match(await code(h, 'text(JSON.parse(await tools.inspect_tab({})).title);'), /Firefox invoice/, 'Opened panel reads only its real source tab');
+  const conversationUrl = await h.driver.getCurrentUrl();
+  const duplicate = await h.newTab(conversationUrl);
+  await h.wait(() => document.getElementById('panel-owner')?.hidden === false, 'Duplicate standalone cannot silently acquire ownership');
+  assert.equal(await h.evaluate(() => document.getElementById('send').disabled), true);
+  await h.click('#continue-here');
+  await ready(h);
+  assert.match(await h.text('#transcript'), /Firefox invoice/, 'Ownership transfer preserves the standalone transcript');
+  await h.driver.switchTo().window(panel);
+  await h.wait(() => document.getElementById('send')?.disabled, 'Original standalone relinquishes ownership');
+  await h.driver.switchTo().window(duplicate);
+  await h.screenshot('fallback-ownership-transfer');
   let authorized = await h.evaluate(async () => (await chrome.storage.session.get('companionDocuments')).companionDocuments);
   assert.ok(Object.keys(authorized).length);
   await h.screenshot('standalone-ready');

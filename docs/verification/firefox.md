@@ -63,6 +63,26 @@ parity remain blocked. Solving them needs a separately designed and reviewed
 execution/storage architecture, not a relaxed document check or a second store
 presented as the same conversation.
 
+## Automated qualification
+
+After packaging both targets, run `npm run test:browser-target`,
+`npm run test:firefox:distribution` and `npm run test:firefox`.
+The browser harness uses installed Selenium/geckodriver with fresh temporary
+profiles and the actual `dist-firefox/`, never a patched test bundle.
+`ACCANTO_ARTIFACT_DIR` redirects logs and screenshots outside the checkout.
+See [contributor instructions](../../CONTRIBUTING.md#experimental-firefox-build)
+for executable overrides.
+
+The security and fallback suites check the authorized launcher, no embedded
+conversation database/lock/agent import, source-bound standalone opening,
+rogue broker/action rejection, stale document targeting, navigation/reload
+cleanup and removal of a live permission grant. Exclusive ownership is tested
+between standalone tabs, not between an iframe and a tab. Separate suites cover
+local synthetic streaming, selected PDF bytes, Wasm/Stop/timeout and inert
+portable backup import. Optional permissions are granted through isolated
+browser test privileges, not native permission dialogs. CI currently validates
+the Firefox package only; real Firefox tests require an installed browser/driver.
+
 ## A keyless local check
 
 No API key, AI service or internet connection is needed for scripted checks.
