@@ -4,7 +4,7 @@ import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import { chromium } from 'playwright';
-import { browserOptions, artifactDirectory } from './test/browser.mjs';
+import { backgroundWorker, browserOptions, artifactDirectory } from './test/browser.mjs';
 
 const artifacts = artifactDirectory('conversations');
 await mkdir(artifacts, { recursive: true });
@@ -43,7 +43,7 @@ try {
     args: [`--disable-extensions-except=${extension}`, `--load-extension=${extension}`],
     viewport: { width: 380, height: 850 },
   });
-  const worker = browser.serviceWorkers()[0] ?? await browser.waitForEvent('serviceworker');
+  const worker = await backgroundWorker(browser);
   await worker.evaluate(() => chrome.storage.local.set({ mode: 'scripted' }));
   await browser.route('https://mcp.exa.ai/**', async route => {
     const query = route.request().postDataJSON().params.arguments.query;

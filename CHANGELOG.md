@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.4.1
+
+- Open the companion’s **…** menu to switch chats, open the current chat in a tab, or go to Settings.
+- Your messages now appear in right-aligned bubbles. Reply status appears beside the send controls.
+
 ## 0.4.0
 
 ### Interface polish

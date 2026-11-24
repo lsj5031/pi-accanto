@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import { build } from 'esbuild';
 import { chromium } from 'playwright';
-import { browserOptions, artifactDirectory } from './test/browser.mjs';
+import { backgroundWorker, browserOptions, artifactDirectory } from './test/browser.mjs';
 import { pdf } from './test/pdf-fixtures.mjs';
 const artifacts = artifactDirectory('distribution');
 await mkdir(artifacts, { recursive: true });
@@ -42,7 +42,7 @@ try {
     const c = await chromium.launchPersistentContext(resolve(scratch, name), { ...browserOptions, args: [`--disable-extensions-except=${ext}`, `--load-extension=${ext}`], viewport: { width: 380, height: 850 } });
     contexts.push(c);
     await c.route(/^https?:/, route => route.abort());
-    const worker = c.serviceWorkers()[0] || await c.waitForEvent('serviceworker');
+    const worker = await backgroundWorker(c);
     await worker.evaluate(first => chrome.storage.local.set({ mode: 'scripted', modelConnection: { imageInput: true }, ...(first ? { apiKey: 'STORAGE-KEY-CANARY', braveKey: 'SEARCH-KEY-CANARY' } : {}) }), name === 'first');
     return { c, worker, base: `chrome-extension://${new URL(worker.url()).host}/panel.html` };
   };
@@ -209,7 +209,7 @@ try {
   }, backup);
   assert.equal(await settings.evaluate(async () => (await import('./archive-test.js')).listArchives().then(a => a.length)), 2);
   await settings.goto(`${fresh.base}?conversation=${archives[0].id}`);
-  await settings.locator('#status').filter({ hasText: 'Read-only archive' }).waitFor();
+  await settings.getByRole('status').filter({ hasText: 'Read-only archive' }).waitFor();
   assert.match(await settings.locator('#transcript').textContent(), /Synthetic answer|Restored evidence 713/);
   assert.match(await settings.locator('#transcript').textContent(), /Synthetic tool evidence 721/);
   const activity = settings.locator('#transcript .turn-activity');

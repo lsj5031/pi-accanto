@@ -656,6 +656,10 @@ async function start() {
   $('connect-model').disabled = false;
   $('open-settings').addEventListener('click', openSettings);
   $('open-settings').hidden = $('minimize').hidden = $('enlarge').hidden = !embedded;
+  if (!embedded) {
+    const summary = $('history-menu').querySelector('summary');
+    summary.ariaLabel = summary.title = 'Chats';
+  }
   refreshNavigationWarning();
   $('minimize').addEventListener('click', () => parent.postMessage({ type: 'accanto-minimize' }, '*'));
   $('enlarge').addEventListener('click', () => parent.postMessage({ type: 'accanto-window', action: 'enlarge' }, '*'));
@@ -954,7 +958,7 @@ async function start() {
       }
       return;
     }
-    if (event.key === 'Escape' && $('connection').open) {
+    if (event.key === 'Escape' && !settingsOnly && $('connection').open) {
       $('connection').open = false;
       $('connection').querySelector('summary').focus();
     }
@@ -1072,7 +1076,7 @@ async function start() {
   const archived = await getArchive(conversationId);
   if (archived) {
     renderArchive(archived);
-    $('status').textContent = 'Read-only archive · Tasks cannot resume. Sources can be saved locally and selected in a new chat.';
+    $('archive-notice').textContent = 'Read-only archive · Tasks cannot resume. Sources can be saved locally and selected in a new chat.';
     $('composer').hidden = true;
     $('onboarding').hidden = true;
     for (const id of ['new-conversation', 'web-conversation', 'page-conversation', 'use-current-tab']) $(id).disabled = true;

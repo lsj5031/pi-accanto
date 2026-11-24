@@ -7,7 +7,7 @@ import { execFileSync } from 'node:child_process';
 import { createServer } from 'node:http';
 import assert from 'node:assert/strict';
 import { pdf, reportPdf } from './test/pdf-fixtures.mjs';
-import { browserOptions, artifactDirectory, liveModelSettings } from './test/browser.mjs';
+import { backgroundWorker, browserOptions, artifactDirectory, liveModelSettings } from './test/browser.mjs';
 
 if (process.platform !== 'win32') throw new Error('The native browser suite requires an unlocked interactive Windows desktop. Use npm run test:fixtures for portable checks.');
 const model = liveModelSettings();
@@ -55,7 +55,7 @@ try {
     console.log(native('list'));
     throw error;
   }
-  const worker = browser.serviceWorkers()[0] ?? await browser.waitForEvent('serviceworker');
+  const worker = await backgroundWorker(browser);
   const [attachedTab] = await worker.evaluate(() => chrome.tabs.query({ active: true, currentWindow: true }));
   assert.match(attachedTab.url, /^http:\/\/127\.0\.0\.1:/, 'Toolbar action must grant activeTab access');
   await fixture.waitForFunction(() => document.querySelector('[data-accanto-companion]')?.getBoundingClientRect().width > 300);

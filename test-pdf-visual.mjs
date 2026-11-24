@@ -7,7 +7,7 @@ import { performance } from 'node:perf_hooks';
 import { build } from 'esbuild';
 import { chromium } from 'playwright';
 import { pdf, largeScanPdf } from './test/pdf-fixtures.mjs';
-import { browserOptions, artifactDirectory } from './test/browser.mjs';
+import { backgroundWorker, browserOptions, artifactDirectory } from './test/browser.mjs';
 
 const artifacts = artifactDirectory('pdf-visual');
 await mkdir(artifacts, { recursive: true });
@@ -46,7 +46,7 @@ let browser;
 try {
   browser = await chromium.launchPersistentContext(profile, { ...browserOptions, args: [`--disable-extensions-except=${extension}`, `--load-extension=${extension}`], viewport: { width: 380, height: 850 } });
   await browser.route(/^https?:\/\/(?!127\.0\.0\.1(?=[:/]))/, route => route.abort('blockedbyclient'));
-  const worker = browser.serviceWorkers()[0] ?? await browser.waitForEvent('serviceworker');
+  const worker = await backgroundWorker(browser);
   const base = `chrome-extension://${new URL(worker.url()).host}`;
   const generator = await browser.newPage();
   await generator.goto(`${base}/panel.html`);

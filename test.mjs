@@ -4,7 +4,7 @@ import { mkdtemp, rm, mkdir, cp, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import { chromium } from 'playwright';
-import { browserOptions, artifactDirectory } from './test/browser.mjs';
+import { backgroundWorker, browserOptions, artifactDirectory } from './test/browser.mjs';
 
 const artifacts = artifactDirectory('browser');
 await mkdir(artifacts, { recursive: true });
@@ -97,7 +97,7 @@ try {
     args: [`--disable-extensions-except=${extension}`, `--load-extension=${extension}`],
     viewport: { width: 1100, height: 850 },
   });
-  const worker = browser.serviceWorkers()[0] ?? await browser.waitForEvent('serviceworker');
+  const worker = await backgroundWorker(browser);
   const id = new URL(worker.url()).host;
   const fixture = await browser.newPage();
   await fixture.goto(`http://127.0.0.1:${server.address().port}`);
@@ -337,7 +337,8 @@ try {
   assert.equal(modelRequests.at(-1).body.model, 'fixture-model-719');
   assert.equal(modelRequests.at(-1).authorization, 'Bearer fixture-key-719');
   // Previously saved Chat Completions settings and session keys have no API tag.
-  await Promise.all([reopened.waitForEvent('load'), browser.serviceWorkers()[0].evaluate(async () => {
+  const reopenedWorker = await backgroundWorker(browser);
+  await Promise.all([reopened.waitForEvent('load'), reopenedWorker.evaluate(async () => {
     const { modelConnection } = await chrome.storage.local.get('modelConnection');
     delete modelConnection.api;
     await chrome.storage.local.set({ modelConnection });
@@ -345,7 +346,7 @@ try {
   })]);
   await reopened.waitForFunction(() => document.getElementById('status').textContent.includes('Ready'));
   assert.equal(await reopened.locator('#model-api').inputValue(), 'openai-completions');
-  assert.match(await reopened.locator('#connection-status').textContent(), /Key available for this browser session only/);
+  assert.match(await reopened.locator('#connection-status').textContent(), /Key kept for this browser session only/);
   const nativeEndpoint = `http://127.0.0.1:${server.address().port}/native`;
   for (const [api, modelId, keyHeader] of [
     ['openai-responses', 'gpt-4.1-mini', 'authorization'],

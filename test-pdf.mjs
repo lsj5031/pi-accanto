@@ -7,7 +7,7 @@ import { pathToFileURL } from 'node:url';
 import { chromium } from 'playwright';
 import { build } from 'esbuild';
 import { pdf, reportPdf } from './test/pdf-fixtures.mjs';
-import { browserOptions, artifactDirectory } from './test/browser.mjs';
+import { backgroundWorker, browserOptions, artifactDirectory } from './test/browser.mjs';
 
 const artifacts = artifactDirectory('pdf');
 await mkdir(artifacts, { recursive: true });
@@ -47,7 +47,7 @@ try {
     args: [`--disable-extensions-except=${extension}`, `--load-extension=${extension}`],
     viewport: { width: 420, height: 850 },
   });
-  let worker = browser.serviceWorkers()[0] ?? await browser.waitForEvent('serviceworker');
+  let worker = await backgroundWorker(browser);
   await worker.evaluate(() => chrome.storage.local.set({ mode: 'scripted' }));
   const id = new URL(worker.url()).host;
   const base = `http://127.0.0.1:${server.address().port}`;

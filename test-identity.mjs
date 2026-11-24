@@ -4,7 +4,23 @@ import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import test from 'node:test';
 import { chromium } from 'playwright';
-import { browserOptions } from './test/browser.mjs';
+import { backgroundWorker, browserOptions } from './test/browser.mjs';
+
+test('background worker selection ignores unrelated cached and arriving workers', async () => {
+  const workers = [
+    'https://fixture.example/background.js',
+    'chrome-extension://fixture/other.js',
+    'chrome-extension://fixture/background.js',
+  ].map(url => ({ url: () => url, evaluate: () => true }));
+  assert.equal(await backgroundWorker({ serviceWorkers: () => workers }), workers[2]);
+  assert.equal(await backgroundWorker({
+    serviceWorkers: () => workers.slice(0, 2),
+    waitForEvent: (event, { predicate }) => {
+      assert.equal(event, 'serviceworker');
+      return workers.find(predicate);
+    },
+  }), workers[2]);
+});
 
 test('Chrome assigns the same ID to builds installed at different paths', { timeout: 60000 }, async () => {
   const scratch = await mkdtemp(resolve(tmpdir(), 'accanto-identity-'));
@@ -18,7 +34,7 @@ test('Chrome assigns the same ID to builds installed at different paths', { time
       });
       try {
         await browser.route(/^https?:\/\//, route => route.abort('blockedbyclient'));
-        const worker = browser.serviceWorkers()[0] ?? await browser.waitForEvent('serviceworker');
+        const worker = await backgroundWorker(browser);
         assert.equal(await worker.evaluate(() => chrome.runtime.id), 'iojliefpiallbakabkahmiaadgmlfjkf');
         assert.equal(new URL(worker.url()).host, 'iojliefpiallbakabkahmiaadgmlfjkf');
       } finally { await browser.close(); }

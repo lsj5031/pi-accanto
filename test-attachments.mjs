@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import { build } from 'esbuild';
 import { chromium } from 'playwright';
-import { browserOptions, artifactDirectory } from './test/browser.mjs';
+import { backgroundWorker, browserOptions, artifactDirectory } from './test/browser.mjs';
 import { pdf } from './test/pdf-fixtures.mjs';
 import { checkControlGeometry } from './test/control-geometry.mjs';
 
@@ -55,7 +55,7 @@ try {
   browser = await chromium.launchPersistentContext(profile, { ...browserOptions, args: [`--disable-extensions-except=${extension}`, `--load-extension=${extension}`], viewport: { width: 380, height: 850 } });
   await browser.route(/^https?:\/\/(?!127\.0\.0\.1(?=[:/]))/, route => route.abort('blockedbyclient'));
   browser.on('page', page => page.on('pageerror', error => errors.push(error.message)));
-  const worker = browser.serviceWorkers()[0] ?? await browser.waitForEvent('serviceworker');
+  const worker = await backgroundWorker(browser);
   await worker.evaluate(() => chrome.storage.local.set({ mode: 'scripted', modelConnection: { imageInput: true } }));
   const main = await browser.newPage();
   const other = await browser.newPage();
@@ -97,6 +97,31 @@ try {
   };
   await shot('01-empty-compact.png');
   await checkControlGeometry(panel, 'Empty compact panel');
+  await panel.setViewportSize({ width: 240, height: 850 });
+  const composer = panel.locator('#composer');
+  const sendButton = panel.locator('#send');
+  const beforeError = [await composer.boundingBox(), await sendButton.boundingBox()];
+  await panel.evaluate(() => {
+    const storage = chrome.storage.session;
+    const original = storage.set;
+    storage.set = async () => {
+      storage.set = original;
+      throw new Error('Fixture draft write failure');
+    };
+  });
+  await panel.locator('#prompt').fill('Keep this draft');
+  const draftError = panel.getByRole('status').filter({ hasText: 'Copy it before closing or reloading this panel.' });
+  await draftError.waitFor();
+  assert.deepEqual([await composer.boundingBox(), await sendButton.boundingBox()], beforeError);
+  assert.equal(await draftError.evaluate(element => {
+    element.scrollTop = element.scrollHeight;
+    const ending = document.createRange();
+    ending.setStart(element.firstChild, element.textContent.lastIndexOf('panel.'));
+    ending.setEndAfter(element.firstChild);
+    const bounds = ending.getBoundingClientRect();
+    return getComputedStyle(element).overflowY === 'auto' && element.scrollTop > 0 && bounds.bottom <= element.getBoundingClientRect().bottom + 1;
+  }), true, 'The recovery instruction must scroll fully into view');
+  await panel.setViewportSize({ width: 380, height: 850 });
   await panel.locator('#attachment-menu > summary').focus();
   await panel.keyboard.press('Enter');
   assert.equal(await panel.locator('#choose-files').isVisible(), true);

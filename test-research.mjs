@@ -4,7 +4,7 @@ import { mkdtemp, rm, cp, readFile, writeFile, mkdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import { chromium } from 'playwright';
-import { browserOptions, artifactDirectory, liveModelSettings } from './test/browser.mjs';
+import { backgroundWorker, browserOptions, artifactDirectory, liveModelSettings } from './test/browser.mjs';
 
 const live = process.argv.includes('--live');
 const model = live ? liveModelSettings() : null;
@@ -41,7 +41,7 @@ try {
     unexpectedRequests.push(new URL(route.request().url()).origin);
     return route.abort('blockedbyclient');
   });
-  const worker = browser.serviceWorkers()[0] ?? await browser.waitForEvent('serviceworker');
+  const worker = await backgroundWorker(browser);
   await worker.evaluate(() => chrome.storage.local.set({ mode: 'scripted' }));
   const fixture = await browser.newPage();
   await fixture.goto(origin);

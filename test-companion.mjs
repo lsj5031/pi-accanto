@@ -4,7 +4,7 @@ import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import { chromium } from 'playwright';
-import { artifactDirectory, browserOptions } from './test/browser.mjs';
+import { artifactDirectory, backgroundWorker, browserOptions } from './test/browser.mjs';
 
 const artifacts = artifactDirectory('companion');
 await mkdir(artifacts, { recursive: true });
@@ -109,7 +109,7 @@ const send = async (frame, prompt) => {
 try {
   browser = await chromium.launchPersistentContext(profile, { ...browserOptions, args: [`--disable-extensions-except=${extension}`, `--load-extension=${extension}`], viewport: { width: 1280, height: 840 } });
   await browser.route(/^https?:\/\/(?!(?:127\.0\.0\.1|localhost)(?=[:/]))/, route => route.abort('blockedbyclient'));
-  worker = browser.serviceWorkers()[0] ?? await browser.waitForEvent('serviceworker');
+  worker = await backgroundWorker(browser);
   const base = `chrome-extension://${new URL(worker.url()).host}`;
   // Headless Chrome cannot accept its native optional-permission prompt.
   // Change the real grant through Chrome's extension settings instead.
@@ -141,12 +141,13 @@ try {
   let a = await open(page);
   await a.locator('#connect-model').waitFor();
   await page.screenshot({ path: resolve(artifacts, 'first-use.png') });
-  const [, settings] = await Promise.all([
-    a.locator('#connect-model').click(),
-    browser.waitForEvent('page'),
-  ]);
+  const settingsOpened = browser.waitForEvent('page');
+  await a.locator('#connect-model').click();
+  const settings = await settingsOpened;
   await settings.waitForFunction(() => document.body.dataset.settings === 'true');
   assert.ok(settings.url().startsWith(`${base}/panel.html?settings=1`));
+  await settings.locator('#model-api').press('Escape');
+  assert.equal(await settings.locator('#model-api').isVisible(), true);
   assert.equal(await a.locator('#panel-owner').isVisible(), false, 'Settings must not take conversation ownership');
   await settings.setViewportSize({ width: 320, height: 1000 });
   for (const api of ['openai-responses', 'anthropic-messages', 'google-generative-ai', 'openai-completions']) {
@@ -488,12 +489,19 @@ try {
   }), true, 'Shortcut help and its customization action must fit a narrow companion');
   await page.screenshot({ path: resolve(artifacts, 'shortcuts-narrow.png') });
   await a.getByRole('button', { name: 'Close keyboard shortcuts' }).click();
-  await a.locator('#history-menu > summary').click();
+  await a.getByLabel('Chats and settings', { exact: true }).click();
   assert.equal(await a.locator('#conversation-bar').evaluate(element => {
     const box = element.getBoundingClientRect();
     return box.left >= 0 && box.right <= innerWidth && box.bottom <= innerHeight;
   }), true, 'History must stay inside a narrow companion');
   await page.screenshot({ path: resolve(artifacts, 'history-narrow.png') });
+  const menuSettingsOpened = browser.waitForEvent('page');
+  await a.getByRole('button', { name: 'Settings', exact: true }).press('Enter');
+  const menuSettings = await menuSettingsOpened;
+  await menuSettings.locator('#model-api').waitFor();
+  assert.equal(menuSettings.url(), settings.url());
+  await menuSettings.close();
+  await page.bringToFront();
   await a.locator('#conversation button[aria-current=true]').press('Escape');
   await a.locator('#prompt').fill('Please compare the quantities and delivery charge. '.repeat(30));
   assert.equal(await a.evaluate(() => document.documentElement.scrollWidth <= innerWidth && document.getElementById('send').getBoundingClientRect().bottom <= innerHeight), true, 'A narrow long draft must keep Send visible without horizontal overflow');
@@ -633,6 +641,9 @@ try {
   assert.ok(agent.url().startsWith(`${base}/panel.html`));
   assert.equal(new URL(agent.url()).searchParams.get('conversation'), idA);
   assert.match(await agent.locator('#transcript').textContent(), /ONLY-A/);
+  await agent.getByLabel('Chats', { exact: true }).click();
+  assert.equal(await agent.locator('#open-settings').isVisible(), false);
+  await agent.locator('#history-menu > summary').press('Escape');
   await agent.locator('#open-shortcuts').click();
   assert.equal(await agent.locator('#enlarge-shortcut').isVisible(), false, 'Standalone help must omit floating-only controls');
   await agent.screenshot({ path: resolve(artifacts, 'shortcuts-tab.png') });

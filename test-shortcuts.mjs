@@ -5,7 +5,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import { chromium } from 'playwright';
-import { artifactDirectory, browserOptions } from './test/browser.mjs';
+import { artifactDirectory, backgroundWorker, browserOptions } from './test/browser.mjs';
 
 if (process.platform !== 'win32') throw new Error('Native shortcuts require an unlocked interactive Windows desktop.');
 const artifacts = artifactDirectory('shortcuts');
@@ -25,7 +25,7 @@ try {
     ...browserOptions, headless: false, viewport: null,
     args: [`--disable-extensions-except=${resolve('dist')}`, `--load-extension=${resolve('dist')}`, '--force-renderer-accessibility', '--force-device-scale-factor=1'],
   });
-  const worker = browser.serviceWorkers()[0] || await browser.waitForEvent('serviceworker');
+  const worker = await backgroundWorker(browser);
   await worker.evaluate(() => chrome.storage.local.set({ mode: 'scripted' }));
   const page = await browser.newPage();
   page.setDefaultTimeout(15000);
