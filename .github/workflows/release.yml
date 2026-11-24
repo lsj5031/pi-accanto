@@ -40,6 +40,12 @@ jobs:
             artifacts/SHA256SUMS
             artifacts/RELEASE_NOTES.md
           if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: fixture-failure-evidence
+          path: test-results/
+          retention-days: 7
   publish:
     needs: verify
     runs-on: ubuntu-24.04
