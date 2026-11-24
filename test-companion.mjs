@@ -354,7 +354,8 @@ try {
   await a.locator('article.assistant').last().getByText('Checking the invoice…', { exact: true }).waitFor();
   dropModelStream();
   await idle(a);
-  assert.match(await a.locator('.model-error').last().textContent(), /Checking the invoice…/);
+  assert.match(await a.locator('#transcript').textContent(), /Checking the invoice…/, 'A partial reply that streamed before the failure must stay readable');
+  assert.doesNotMatch(await a.locator('.model-error').last().textContent(), /Checking the invoice…/, 'The failure block must not present the partial reply as the error');
   const streamError = await a.locator('.model-error-details .message-body').last().textContent();
   assert.ok(streamError && !streamError.includes('Checking the invoice'), 'A partial reply must not hide the actual stream error');
   await a.locator('.model-error-details > summary').last().click();

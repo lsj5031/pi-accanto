@@ -95,6 +95,8 @@ function conversationMeta(item) {
 // show it only while a reply runs or while the user has an unsent draft.
 function refreshNavigationWarning() {
   $('navigation-warning').hidden = !embedded || (!busy && !$('prompt').value.trim());
+  // A running reply cannot move to a tab; only offer the hand-off before sending.
+  $('open-persistent-chat').hidden = busy;
 }
 
 async function conversationRequest(options = {}) {
@@ -104,7 +106,9 @@ async function conversationRequest(options = {}) {
 }
 
 function showConversations(conversations) {
-  $('conversation').replaceChildren(...conversations.map(item => {
+  // The list shows a last-used time, so it has to be ordered by it.
+  const ordered = [...conversations].sort((a, b) => (Number(b.updatedAt) || 0) - (Number(a.updatedAt) || 0));
+  $('conversation').replaceChildren(...ordered.map(item => {
     const button = document.createElement('button');
     button.type = 'button';
     button.value = item.id;
@@ -118,7 +122,7 @@ function showConversations(conversations) {
     button.title = meta ? `${item.title}\n${meta}` : item.title;
     return button;
   }));
-  const title = conversations.find(item => item.id === conversationId)?.title || 'Conversation';
+  const title = ordered.find(item => item.id === conversationId)?.title || 'Conversation';
   document.title = `Pi Accanto · ${title}`;
 }
 
@@ -245,6 +249,43 @@ function messageBody(text, formatted) {
   return body;
 }
 
+// A failed turn reports the cause and the next step in a block of its own, so
+// text the model streamed before the failure is never read as the error.
+function modelErrorReport(message, key, open) {
+  const report = document.createElement('article');
+  report.className = 'model-error';
+  const label = document.createElement('strong');
+  label.className = 'message-label';
+  const network = /connection error|failed to fetch|network.?error|fetch failed/i.test(message.errorMessage);
+  label.textContent = network ? 'Could not reach your model' : 'Model request failed';
+  const help = document.createElement('p');
+  help.className = 'model-error-help';
+  help.textContent = network
+    ? 'Check your internet or VPN connection, and that your API server is running and accepting browser requests.'
+    : 'The provider rejected the request. Open Error details for the exact message.';
+  const hint = document.createElement('p');
+  hint.className = 'model-error-hint';
+  hint.textContent = network
+    ? 'Also check the endpoint, API format and website access in model settings, then resend your draft.'
+    : 'Check the endpoint, model ID and API format in model settings, then resend your draft.';
+  const details = document.createElement('details');
+  details.className = 'model-error-details';
+  details.dataset.message = key;
+  details.open = open;
+  const summary = document.createElement('summary');
+  summary.textContent = 'Error details';
+  const body = messageBody(message.errorMessage, false);
+  body.className = 'message-body';
+  details.append(summary, body);
+  const settings = document.createElement('button');
+  settings.type = 'button';
+  settings.className = 'btn';
+  settings.textContent = 'Model settings';
+  settings.addEventListener('click', () => $('connect-model').click());
+  report.append(label, help, hint, details, settings);
+  return report;
+}
+
 function render(view) {
   renderedView = view;
   for (const entry of view.entries) history.set(entry.id, entry);
@@ -310,6 +351,7 @@ function render(view) {
       const pendingCalls = toolCalls.filter(call => !completedCalls.has(call));
       if (toolCalls.length && !pendingCalls.length) continue;
       const body = messageBody(text, message.role === 'assistant' && !toolCalls.length);
+      let failureReport;
       if (message.role === 'toolResult' || toolCalls.length) {
         const call = resultCalls.get(message) || pendingCalls[0];
         if (!activityGroup) {
@@ -405,39 +447,20 @@ function render(view) {
         }
       } else {
         const failed = message.role === 'assistant' && Boolean(message.errorMessage) && message.stopReason !== 'aborted';
-        if (!failed) article.append(role, body);
-        else {
-          article.classList.add('model-error');
-          article.append(role);
-          const network = /connection error|failed to fetch|network.?error|fetch failed/i.test(message.errorMessage);
-          role.textContent = network ? 'Could not reach your model' : 'Model request failed';
-          const help = document.createElement('p');
-          help.className = 'model-error-help';
-          help.textContent = network
-            ? 'Check your internet or VPN connection, and that your API server is running and accepting browser requests.'
-            : 'The provider rejected the request. Open Error details for the exact message.';
-          const hint = document.createElement('p');
-          hint.className = 'model-error-hint';
-          hint.textContent = network
-            ? 'Also check the endpoint, API format and website access in model settings, then resend your draft.'
-            : 'Check the endpoint, model ID and API format in model settings, then resend your draft.';
-          const details = document.createElement('details');
-          details.className = 'model-error-details';
-          details.dataset.message = `error:${entry.id}:${messageIndex}`;
-          details.open = expanded.has(details.dataset.message);
-          const summary = document.createElement('summary');
-          summary.textContent = 'Error details';
-          const errorBody = messageBody(message.errorMessage, false);
-          errorBody.className = 'message-body';
-          details.append(summary, errorBody);
-          const settings = document.createElement('button');
-          settings.type = 'button';
-          settings.className = 'btn';
-          settings.textContent = 'Model settings';
-          settings.addEventListener('click', () => $('connect-model').click());
-          article.append(help, hint, details, settings);
+        // Text the model streamed before failing stays a normal reply; the
+        // failure is reported below it instead of replacing it.
+        const partial = failed && text !== message.errorMessage;
+        if (!failed || partial) article.append(role, body);
+        if (failed) {
+          const key = `error:${entry.id}:${messageIndex}`;
+          const report = modelErrorReport(message, key, expanded.has(key));
+          if (partial) failureReport = report;
+          else {
+            article.classList.add('model-error');
+            article.append(...report.childNodes);
+          }
         }
-        if (message.role === 'assistant' && !message.errorMessage) {
+        if (message.role === 'assistant' && (!message.errorMessage || partial)) {
           const actions = document.createElement('div');
           actions.className = 'message-actions';
           const copy = document.createElement('button');
@@ -464,6 +487,7 @@ function render(view) {
       if (article.classList.contains('activity')) activityGroup.lastChild.append(article);
       else {
         transcript.append(article);
+        if (failureReport) transcript.append(failureReport);
         if (activityGroup && message.role === 'assistant') transcript.append(activityGroup);
         activityGroup = undefined;
       }

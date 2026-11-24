@@ -122,6 +122,7 @@ try {
   assert.match(await send(duplicate, `Read source: ${origin}/fresh-source`), /713/);
   await duplicate.locator('#history-menu > summary').click();
   assert.equal(await duplicate.locator(`#conversation button[value="${idA}"]`).getAttribute('aria-current'), 'true');
+  assert.equal(await duplicate.locator('#conversation button').first().getAttribute('value'), idA, 'The most recently used chat must be listed first');
   await duplicate.locator(`#conversation button[value="${idB}"]`).click();
   await duplicate.locator('#panel-owner').waitFor();
   assert.equal(await b.locator('#send').isEnabled(), true, 'Selecting an owned conversation must not steal it');

@@ -18,12 +18,13 @@
   readable measure, and reader copy and status text meet contrast guidance.
 - The transcript is no longer one live region; speaker labels are announced and
   completion is announced once.
-- Model errors lead with the cause and the next step, and no longer show a
-  partial reply as if it were the failure.
-- Saved chats show when they were last used and a one-line preview. **Reset chat**
-  asks for a second click because it clears additional sources.
+- Model errors lead with the cause and the next step. A reply that streamed
+  before the failure stays readable above the error instead of vanishing.
+- Saved chats show when they were last used and a one-line preview, most
+  recently used first. **Reset chat** asks for a second click because it clears
+  additional sources.
 - The page chip now reads **This page · …**; history entries no longer share its
   label. The "leaving this page stops replies" notice appears only while a reply
-  runs or a draft exists.
+  runs or a draft exists, and offers the tab hand-off only before sending.
 - The empty page offers **解释一下** beside **Summarize**. The launcher has a
   hover close button, and **Forget key** is no longer styled as a primary action.

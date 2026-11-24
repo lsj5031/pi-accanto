@@ -242,7 +242,7 @@ friendly eye change, then click to open. Reduced-motion preferences are respecte
 | Put it away | Click **−** or press **Escape**. A running reply continues while minimized. |
 | Move it | Drag the small grip at the top. |
 | Make room for a longer chat | Click the expand icon or press **Alt + Shift + D** to enlarge. Press again to restore the previous size and position. |
-| Start fresh or return to a chat | Open **Chats** in the header. **Reset chat** starts fresh in the same saved chat, without adding a history entry; choose it twice to confirm because it clears additional sources. Or choose another saved conversation. |
+| Start fresh or return to a chat | Open **Chats** in the header. **Reset chat** starts fresh in the same saved chat, without adding a history entry; choose it twice to confirm because it clears additional sources. Or choose another saved conversation, listed most recently used first. |
 | Change page context | Open the page-context chip and choose **Web only** or **Use this page**. Your unsent draft is kept. |
 | Keep working while you navigate | Press **Alt + Shift + S** or choose **Chats → Open in a tab** before starting the reply. The conversation and its page context move together. Keep that assistant tab open. |
 | Hide the companion on a website | Hover the small companion and click **×**, or right-click it and choose **Hide on this site**. The toolbar can bring it back. |
