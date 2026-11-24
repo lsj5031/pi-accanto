@@ -126,7 +126,7 @@ try {
   assert.match(report.liveMdnRead, /Fetched public source text/);
   assert.match(report.liveMdnRead, /Array\.prototype\.map|map\(\)/);
   await panel.screenshot({ path: resolve(artifacts, 'exa-sources.png') });
-  await panel.locator('#new-conversation').evaluate((element) => element.click());
+  await panel.locator('#new-conversation').evaluate((element) => { element.click(); element.click(); });
   await panel.waitForFunction(() => !document.getElementById('send').disabled);
   await panel.locator('#web-conversation').evaluate((element) => element.click());
   await panel.waitForFunction(() => !document.getElementById('send').disabled);
@@ -406,7 +406,7 @@ try {
   await panel.reload();
   await panel.waitForFunction(() => document.getElementById('status').textContent.includes('Ready'));
   await fixture.bringToFront();
-  await panel.locator('#new-conversation').evaluate((element) => element.click());
+  await panel.locator('#new-conversation').evaluate((element) => { element.click(); element.click(); });
   await panel.waitForFunction(() => !document.getElementById('send').disabled);
   const implicitQuestion = async (prompt, expected) => {
     const before = report.modelRequests.length;
@@ -429,7 +429,7 @@ try {
   await implicitQuestion('What is the unit price now?', '31.40');
   await panel.screenshot({ path: resolve(artifacts, 'implicit-page-context.png') });
   await fixture.locator('p').first().evaluate((element) => { element.textContent = 'Line items: 3 at 27.50; delivery 8.25.'; });
-  await panel.locator('#new-conversation').evaluate((element) => element.click());
+  await panel.locator('#new-conversation').evaluate((element) => { element.click(); element.click(); });
   await panel.waitForFunction(() => !document.getElementById('send').disabled);
   await panel.locator('#prompt').fill('Use search_page to find the cancellation fee beyond the introduction. Then use codemode to call inspect_tab and calculate 3 items times their unit price plus delivery from its text. Cite the page URL and fee clause. Use the tools, not mental arithmetic.');
   await panel.locator('#send').evaluate((element) => element.click());
@@ -444,7 +444,7 @@ try {
   await panel.screenshot({ path: resolve(artifacts, 'live-model.png') });
   await fixture.goto(`${origin}/code-mode-invoice.html`);
   await fixture.locator('#change-invoice').click();
-  await panel.locator('#new-conversation').evaluate((element) => element.click());
+  await panel.locator('#new-conversation').evaluate((element) => { element.click(); element.click(); });
   await panel.waitForFunction(() => !document.getElementById('send').disabled);
   await panel.locator('#prompt').fill('Use Code Mode to read the invoice\'s actual quantity, unit price and delivery, calculate the total, and cite the page URL. Show the inputs and your working.');
   await panel.locator('#send').evaluate((element) => element.click());
@@ -454,7 +454,7 @@ try {
   assert.ok((await panel.locator('article.assistant .message-body').last().textContent()).includes('/code-mode-invoice.html'));
   report.invoiceDemoAnswer = await panel.locator('#transcript').textContent();
   await panel.screenshot({ path: resolve(artifacts, 'code-mode-demo-answer.png') });
-  await panel.locator('#new-conversation').evaluate((element) => element.click());
+  await panel.locator('#new-conversation').evaluate((element) => { element.click(); element.click(); });
   await panel.waitForFunction(() => !document.getElementById('send').disabled);
   await panel.locator('#web-conversation').evaluate((element) => element.click());
   await panel.waitForFunction(() => !document.getElementById('send').disabled);

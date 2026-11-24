@@ -70,7 +70,7 @@ try {
     await fixture.bringToFront();
     await fixture.waitForLoadState('networkidle');
     await panel.waitForFunction(async () => (await chrome.tabs.query({ active: true, currentWindow: true }))[0]?.status === 'complete');
-    await panel.locator('#new-conversation').evaluate(button => button.click());
+    await panel.locator('#new-conversation').evaluate(button => { button.click(); button.click(); });
     await panel.waitForFunction(() => !document.getElementById('new-conversation').disabled);
     assert.match(await panel.locator('#status').textContent(), /Chat reset/);
   }

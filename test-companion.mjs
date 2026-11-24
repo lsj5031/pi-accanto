@@ -192,13 +192,16 @@ try {
   assert.equal(await settings.locator('#connection-status').getAttribute('data-state'), 'draft');
   assert.equal(await settings.locator('#connect').textContent(), 'Connect');
   await settings.locator('#connect').click();
-  await settings.waitForFunction(() => document.getElementById('connection-status').textContent.includes('Key remembered on this device'));
+  await settings.waitForFunction(() => document.getElementById('connection-status').textContent.includes('Key saved on this device'));
   assert.equal(await settings.locator('#connection-status').getAttribute('data-state'), 'configured');
-  assert.match(await settings.locator('#connection-status').textContent(), /Model configured: companion-fixture/);
-  assert.match(await settings.locator('#connection-status').textContent(), /model catalog only, not chat access/);
+  assert.match(await settings.locator('#connection-status').textContent(), /Connected to companion-fixture/);
+  assert.match(await settings.locator('#connection-status').textContent(), /Key saved on this device/);
   assert.equal(await settings.locator('#connect').textContent(), 'Reconnect');
   await ready(a);
+  assert.equal(await a.locator('#navigation-warning').isVisible(), false, 'The navigation notice stays out of the way until there is a draft');
+  await a.locator('#prompt').fill('Draft before navigating');
   assert.equal(await a.locator('#navigation-warning').isVisible(), true);
+  await a.locator('#prompt').fill('');
   assert.equal(await a.locator('#open-persistent-chat').isEnabled(), true);
   assert.equal(await worker.evaluate(origin => chrome.permissions.contains({ origins: [`${origin}/*`] }), modelOrigin), true);
   await settings.screenshot({ path: resolve(artifacts, 'settings.png') });
@@ -368,7 +371,7 @@ try {
   await page.screenshot({ path: resolve(artifacts, 'composer-long.png') });
   await a.locator('#prompt').fill('');
   assert.equal(await a.locator('#prompt').evaluate(element => element.clientHeight), collapsedHeight, 'Clearing a draft must collapse the composer');
-  await a.locator('#new-conversation').evaluate(button => button.click());
+  await a.locator('#new-conversation').evaluate(button => { button.click(); button.click(); });
   await idle(a);
   await send(a, 'What is the invoice total?');
   await idle(a);
@@ -716,7 +719,7 @@ try {
   assert.match(await detached.locator('article.toolResult').last().textContent(), /21/);
   await detached.reload(); await ready(detached);
   assert.match(await detached.locator('#composer-target').textContent(), /No tab attached/, 'No-page mode must survive reload');
-  await detached.locator('#new-conversation').evaluate(button => button.click()); await idle(detached);
+  await detached.locator('#new-conversation').evaluate(button => { button.click(); button.click(); }); await idle(detached);
   assert.match(await detached.locator('#composer-target').textContent(), /No tab attached/, 'A fresh standalone chat must not attach the blank source tab');
   await detached.screenshot({ path: resolve(artifacts, 'no-tab-attached.png') });
   assert.deepEqual(errors, []);

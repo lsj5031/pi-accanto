@@ -111,6 +111,7 @@ try {
   assert.doesNotMatch(await b.locator('#transcript').textContent(), /ONLY-A|ALPHA/);
   await duplicate.locator('#history-menu > summary').click();
   await duplicate.locator('#new-conversation').click();
+  await duplicate.locator('#new-conversation').click();
   await idle(duplicate);
   assert.match(await send(duplicate, 'Code: text(load("marker") ?? "EMPTY-A");'), /EMPTY-A/);
   assert.match(await send(b, 'Code: text(load("marker"));'), /ONLY-B/);

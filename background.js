@@ -142,9 +142,16 @@ chrome.runtime.onMessage.addListener((message, sender, reply) => {
     if (message.id && !conversations[message.id]) throw new Error('Conversation not found. Choose a saved conversation.');
     if (!id || !conversations[id]) {
       id = crypto.randomUUID();
-      conversations[id] = { id, title: tab?.title || 'New conversation' };
+      conversations[id] = { id, title: tab?.title || 'New conversation', updatedAt: Date.now(), preview: '' };
     }
-    if (message.title) conversations[id].title = String(message.title).slice(0, 200);
+    if (message.title) {
+      conversations[id].title = String(message.title).slice(0, 200);
+      conversations[id].updatedAt = Date.now();
+    }
+    if (message.preview) {
+      conversations[id].preview = String(message.preview).replace(/\s+/g, ' ').slice(0, 120);
+      conversations[id].updatedAt = Date.now();
+    }
     if (tab) mapping[tabId] = id;
     await chrome.storage.local.set({ conversations });
     await chrome.storage.session.set({ browserSession, tabConversations: mapping });

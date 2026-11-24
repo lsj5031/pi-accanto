@@ -74,6 +74,29 @@ const modelApis = {
 
 const toolLabels = { inspect_tab: 'Read this page', type_in_focused_field: 'Edit focused field', search_page: 'Search this page', read_page_section: 'Read page section', web_search: 'Search the web', read_web_source: 'Read web source', list_sources: 'List attached sources', read_source: 'Read attached source', codemode: 'Code Mode' };
 
+function relativeTime(value) {
+  const time = Number(value);
+  if (!Number.isFinite(time) || time <= 0) return '';
+  const minutes = Math.round((Date.now() - time) / 60000);
+  if (minutes < 1) return 'Just now';
+  if (minutes < 60) return `${minutes} min ago`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `${hours} h ago`;
+  const days = Math.round(hours / 24);
+  if (days < 7) return `${days} d ago`;
+  return new Date(time).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+}
+
+function conversationMeta(item) {
+  return [relativeTime(item.updatedAt), item.preview].filter(Boolean).join(' · ');
+}
+
+// The navigation notice is a one-time decision, not a permanent banner:
+// show it only while a reply runs or while the user has an unsent draft.
+function refreshNavigationWarning() {
+  $('navigation-warning').hidden = !embedded || (!busy && !$('prompt').value.trim());
+}
+
 async function conversationRequest(options = {}) {
   const result = await chrome.runtime.sendMessage({ type: 'conversation', tabId: conversationTabId, id: conversationId, ...options });
   if (result.error) throw new Error(result.error);
@@ -85,11 +108,14 @@ function showConversations(conversations) {
     const button = document.createElement('button');
     button.type = 'button';
     button.value = item.id;
-    button.title = item.title;
     button.className = 'conversation-item';
     button.setAttribute('aria-current', String(item.id === conversationId));
-    button.innerHTML = '<span></span><svg class="current-check" viewBox="0 0 20 20" aria-hidden="true"><path d="m5 10 3 3 7-7"/></svg>';
-    button.querySelector('span').textContent = item.title;
+    button.innerHTML = '<span class="conversation-copy"><span class="conversation-title"></span><small class="conversation-meta"></small></span><svg class="current-check" viewBox="0 0 20 20" aria-hidden="true"><path d="m5 10 3 3 7-7"/></svg>';
+    button.querySelector('.conversation-title').textContent = item.title;
+    const meta = conversationMeta(item);
+    if (meta) button.querySelector('.conversation-meta').textContent = meta;
+    else button.querySelector('.conversation-meta').remove();
+    button.title = meta ? `${item.title}\n${meta}` : item.title;
     return button;
   }));
   const title = conversations.find(item => item.id === conversationId)?.title || 'Conversation';
@@ -226,7 +252,10 @@ function render(view) {
   const fresh = entries.findLastIndex((entry) => entry.kind === 'accanto.target' && entry.data.fresh);
   const transcript = $('transcript');
   const scrollTop = transcript.scrollTop;
-  const following = transcript.scrollHeight - scrollTop - transcript.clientHeight < 40;
+  // A welcome greeting can be taller than the compact transcript; treat it as
+  // "at the bottom" so the first reply still scrolls into view.
+  const wasEmpty = Boolean(transcript.querySelector(':scope > .empty-state'));
+  const following = wasEmpty || transcript.scrollHeight - scrollTop - transcript.clientHeight < 40;
   const expanded = new Set([...transcript.querySelectorAll('details[open]')].map((details) => details.dataset.message));
   const focusedMessage = document.activeElement.closest('details[data-message]')?.dataset.message;
   const focusedCopy = document.activeElement.dataset.copyMessage;
@@ -375,16 +404,23 @@ function render(view) {
           article.append(approval);
         }
       } else {
-        article.append(role, body);
-        if (message.role === 'assistant' && message.errorMessage && message.stopReason !== 'aborted') {
+        const failed = message.role === 'assistant' && Boolean(message.errorMessage) && message.stopReason !== 'aborted';
+        if (!failed) article.append(role, body);
+        else {
           article.classList.add('model-error');
+          article.append(role);
           const network = /connection error|failed to fetch|network.?error|fetch failed/i.test(message.errorMessage);
           role.textContent = network ? 'Could not reach your model' : 'Model request failed';
           const help = document.createElement('p');
           help.className = 'model-error-help';
           help.textContent = network
-            ? 'Check your internet or VPN connection and that your API server is running and accepts browser requests. Check the endpoint, API format and website access in model settings, then resend your draft. The browser did not provide a more specific cause.'
-            : 'Check the provider’s error below. You can review your model settings, then resend your draft.';
+            ? 'Check your internet or VPN connection, and that your API server is running and accepting browser requests.'
+            : 'The provider rejected the request. Open Error details for the exact message.';
+          const hint = document.createElement('p');
+          hint.className = 'model-error-hint';
+          hint.textContent = network
+            ? 'Also check the endpoint, API format and website access in model settings, then resend your draft.'
+            : 'Check the endpoint, model ID and API format in model settings, then resend your draft.';
           const details = document.createElement('details');
           details.className = 'model-error-details';
           details.dataset.message = `error:${entry.id}:${messageIndex}`;
@@ -394,13 +430,12 @@ function render(view) {
           const errorBody = messageBody(message.errorMessage, false);
           errorBody.className = 'message-body';
           details.append(summary, errorBody);
-          if (text === message.errorMessage) body.remove();
           const settings = document.createElement('button');
           settings.type = 'button';
           settings.className = 'btn';
           settings.textContent = 'Model settings';
           settings.addEventListener('click', () => $('connect-model').click());
-          article.append(help, details, settings);
+          article.append(help, hint, details, settings);
         }
         if (message.role === 'assistant' && !message.errorMessage) {
           const actions = document.createElement('div');
@@ -458,17 +493,19 @@ function render(view) {
   if (!transcript.hasChildNodes()) {
     const welcome = $('empty-state').content.cloneNode(true);
     if (entries.findLast((entry) => entry.kind === 'accanto.target')?.data.web) {
+      // The explain chip needs a page; web research has none.
+      welcome.querySelector('.suggestion-explain')?.remove();
       welcome.querySelector('h2').textContent = 'A little help with your research.';
       welcome.querySelector('p').textContent = 'Search the web, allow sources you want read, or calculate from information you provide. No tab is attached.';
       const suggestions = welcome.querySelectorAll('[data-prompt]');
-      suggestions[0].textContent = 'Research a question ↗';
+      suggestions[0].textContent = 'Research a question';
       suggestions[0].dataset.prompt = 'Search the web for ';
-      suggestions[1].textContent = 'Check a calculation ↗';
+      suggestions[1].textContent = 'Check a calculation';
       suggestions[1].dataset.prompt = 'Use Code Mode to calculate ';
     }
     transcript.append(welcome);
   }
-  transcript.scrollTop = following ? transcript.scrollHeight : scrollTop;
+  transcript.scrollTop = transcript.querySelector(':scope > .empty-state') ? 0 : following ? transcript.scrollHeight : scrollTop;
   if (focusedMessage) transcript.querySelector(`details[data-message="${focusedMessage}"] > summary`)?.focus({ preventScroll: true });
   if (focusedCopy) transcript.querySelector(`button[data-copy-message="${focusedCopy}"]`)?.focus({ preventScroll: true });
 }
@@ -518,10 +555,10 @@ async function showAttachment() {
   $('site-access-host').textContent = accessTab?.origin ?? '';
   $('allow-site').disabled = busy;
   $('conversation').disabled = $('open-conversation').disabled = busy;
-  $('target').textContent = webResearch ? 'Web research' : target?.title || current?.title || 'Current tab';
+  $('target').textContent = webResearch ? 'Web research' : target?.title ? `This page · ${target.title}` : current?.title ? `This page · ${current.title}` : 'This page';
   $('target').title = webResearch ? '' : target?.url || current?.url || '';
   $('composer-target').textContent = webResearch ? 'Ask the web · No tab attached' : target ? `Message about: ${target.title}` : 'Ask about this page';
-  $('prompt').placeholder = webResearch ? 'Ask anything or search the web…' : 'Ask about this page...';
+  $('prompt').placeholder = webResearch ? 'Ask anything or search the web…' : 'Ask about this page…';
   $('target-hint').textContent = webResearch ? 'No tab content is included' : hint;
   $('tab-switch').hidden = !target || (available && current?.id === target.id);
   $('current-tab-label').textContent = current?.title ? `Viewing: ${current.title}` : 'You’re viewing another tab';
@@ -595,7 +632,7 @@ async function start() {
   $('connect-model').disabled = false;
   $('open-settings').addEventListener('click', openSettings);
   $('open-settings').hidden = $('minimize').hidden = $('enlarge').hidden = !embedded;
-  $('navigation-warning').hidden = !embedded;
+  refreshNavigationWarning();
   $('minimize').addEventListener('click', () => parent.postMessage({ type: 'accanto-minimize' }, '*'));
   $('enlarge').addEventListener('click', () => parent.postMessage({ type: 'accanto-window', action: 'enlarge' }, '*'));
   if (embedded) addEventListener('message', event => {
@@ -618,6 +655,7 @@ async function start() {
   const statusChanged = () => {
     $('status').dataset.quiet = String(!busy && /^(Ready|Reply complete|Check complete|Attached|Chat reset|Web research)/.test($('status').textContent));
     $('open-persistent-chat').disabled = busy || !ownsConversation;
+    refreshNavigationWarning();
     if (embedded) parent.postMessage({ type: 'accanto-busy', busy }, '*');
   };
   new MutationObserver(statusChanged).observe($('status'), { childList: true });
@@ -646,6 +684,7 @@ async function start() {
   const reportDraftError = () => { $('status').textContent = 'Could not save your draft. Copy it before closing or reloading this panel.'; };
   $('prompt').addEventListener('input', () => {
     draftEdited = true;
+    refreshNavigationWarning();
     void saveDraft().catch(reportDraftError);
   });
   let reloading = false;
@@ -797,7 +836,7 @@ async function start() {
         await chrome.storage.local.set({ searchProvider: provider });
         await chrome.storage.session.set({ searchProvider: provider });
         $(`${provider}-key`).value = '';
-        $('search-status').textContent = `${remember ? 'Key remembered on this device.' : 'Key kept for this browser session only.'} The next search will validate the key and quota.`;
+        $('search-status').textContent = `${remember ? 'Key saved on this device.' : 'Key kept for this browser session only.'} The next search will validate the key and quota.`;
       }
       $('search-state').textContent = `· ${searchNames[provider]}${provider === 'exa' ? '' : ' · Key available'}`;
       showSearchFallback(null);
@@ -841,7 +880,7 @@ async function start() {
     if (event.target.matches('#model-endpoint, #model-id, #api-key, #remember-model-key, #custom-image-input, #mode')) connectionStatus('draft', 'Changes not applied. Connect to check and save. Your active connection is unchanged.');
   });
   $('provider-notice').textContent = scripted ? 'Offline check' : modelId || 'Set up model';
-  const configuredMessage = `Model configured: ${modelId}. ${credential.remember ? 'Key remembered on this device.' : 'Key available for this browser session only.'} Saving checks the model catalog only, not chat access.`;
+  const configuredMessage = `Connected to ${modelId}. ${credential.remember ? 'Key saved on this device.' : 'Key kept for this browser session only.'}`;
   connectionStatus(scripted ? 'offline' : apiKey ? 'configured' : 'disconnected', scripted ? 'Offline check mode.' : apiKey ? configuredMessage : 'Not configured. Enter your API key, then Connect.');
   const modelOrigin = endpoint ? `${new URL(endpoint).origin}/*` : undefined;
   const missingModelAccess = `Model server access is missing for ${endpoint ? new URL(endpoint).host : 'your endpoint'}. Allow model access to reconnect.`;
@@ -1066,6 +1105,7 @@ async function start() {
   const savedDraft = await chrome.storage.session.get(draftKey);
   if (!draftEdited && typeof savedDraft[draftKey] === 'string' && (!scripted || savedDraft[draftKey])) $('prompt').value = savedDraft[draftKey];
   draftReady = true;
+  refreshNavigationWarning();
   if (draftEdited) await saveDraft();
   const database = scripted ? 'pi-tab-prototype-v1' : 'pi-tab-live-v1';
   const databaseName = conversationId === 'legacy' ? database : `${database}-${conversationId}`;
@@ -1225,10 +1265,36 @@ async function start() {
     }
   };
 
+  // Resetting a chat also clears its additional sources and stored originals,
+  // so it takes two deliberate clicks instead of one.
+  const resetButton = $('new-conversation');
+  const resetLabel = resetButton.querySelector('span');
+  let resetArmed = 0;
+  let resetTimer;
+  const disarmReset = () => {
+    resetArmed = 0;
+    delete resetButton.dataset.confirm;
+    resetLabel.textContent = 'Reset chat';
+    resetButton.title = 'Start a new task in this saved chat';
+  };
+  const armReset = () => {
+    resetArmed = Date.now();
+    resetButton.dataset.confirm = 'true';
+    resetLabel.textContent = 'Confirm reset';
+    resetButton.title = 'Choose Confirm reset to clear this chat’s additional sources and start over';
+    clearTimeout(resetTimer);
+    resetTimer = setTimeout(disarmReset, 4000);
+  };
+  disarmReset();
   for (const id of ['use-current-tab', 'new-conversation', 'web-conversation', 'page-conversation']) {
     if (id === 'use-current-tab' || id === 'new-conversation') $(id).disabled = false;
     $(id).addEventListener('click', async () => {
       if (busy || portableBusy || !ownsConversation) return;
+      if (id === 'new-conversation' && Date.now() - resetArmed > 4000) {
+        armReset();
+        return;
+      }
+      if (id === 'new-conversation') disarmReset();
       $('history-menu').open = $('context-menu').open = false;
       busy = true;
       $('conversation').disabled = $('open-conversation').disabled = true;
@@ -1274,6 +1340,7 @@ async function start() {
     $('prompt').value = '';
     $('prompt').focus({ preventScroll: true });
     busy = true;
+    refreshNavigationWarning();
     $('conversation').disabled = $('open-conversation').disabled = true;
     $('status').textContent = webResearch ? 'Starting web research…' : 'Reading page context…';
     document.body.dataset.busy = 'true';
@@ -1325,11 +1392,13 @@ async function start() {
       if (!ownsConversation) controller.abort();
       controller.signal.throwIfAborted();
       const submission = await root.submit({ type: 'input', content, entry: { kind: 'accanto.question', data: { prompt } }, requestId: crypto.randomUUID() }, context);
+      // Give the saved-chat list something to show besides the page title.
+      void conversationRequest({ preview: prompt.replace(/\s+/g, ' ').slice(0, 120) }).catch(() => {});
       if (controller.signal.aborted) await root.abort(context);
       const result = await submission.wait(context);
       controller.signal.throwIfAborted();
       $('status').textContent = result.status === 'done' ? `${scripted ? 'Check' : 'Reply'} complete · Saved on this device`
-        : result.reason === 'model_error' ? 'Reply failed · See the error above. Your draft is ready to resend.'
+        : result.reason === 'model_error' ? 'Reply failed · Check the error in the chat. Your draft is ready to resend.'
           : `Run ended: ${result.status}${result.reason ? ` (${result.reason})` : ''}`;
       if (result.status !== 'done' && !$('prompt').value) $('prompt').value = draft;
       if (!scripted && $('connection-status').dataset.state !== 'draft') {
@@ -1344,6 +1413,7 @@ async function start() {
       if (submissionController === controller) submissionController = undefined;
       busy = false;
       document.body.dataset.busy = 'false';
+      refreshNavigationWarning();
       $('send').disabled = !ownsConversation || (!scripted && !apiKey);
       $('stop').disabled = !attachments.list().some(record => record.state === 'loading');
       $('connect').disabled = false;

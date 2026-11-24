@@ -411,7 +411,7 @@ try {
   assert.equal(boundary.encodingError, 'error');
   assert.match(boundary.emptyError, /nonempty/);
   assert.match(boundary.sizeError, /16 MiB/);
-  await panel.locator('#new-conversation').evaluate(button => button.click()); await idle(panel);
+  await panel.locator('#new-conversation').evaluate(button => { button.click(); button.click(); }); await idle(panel);
   assert.equal(await panel.locator('#attachment-list li').count(), 0);
   await panel.locator('#web-conversation').evaluate(button => button.click()); await idle(panel);
   await files([payload('web-only-notes.txt', 'Named evidence without a main page: 682.')]);
@@ -462,6 +462,7 @@ try {
   await companion.locator('#page-conversation').click();
   await idle(companion);
   await companion.locator('#history-menu > summary').click();
+  await companion.locator('#new-conversation').click();
   await companion.locator('#new-conversation').click();
   await idle(companion);
   await companion.locator('#attachment-files').setInputFiles([payload(longName, 'Synthetic geometry evidence: delivery 96.')]);

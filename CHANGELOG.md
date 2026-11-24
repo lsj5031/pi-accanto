@@ -10,3 +10,20 @@
 - Stable unpacked extension identity retained. Back up before updating in the same
   permanent folder, stop work, reload the extension and refresh pages. Session-only
   keys need reentry. Schemas may evolve; downgrades are unsupported.
+
+### Interface polish
+
+- Dark mode follows the system setting, in the panel and the companion button.
+- The empty chat is centred instead of clipped, long replies are capped at a
+  readable measure, and reader copy and status text meet contrast guidance.
+- The transcript is no longer one live region; speaker labels are announced and
+  completion is announced once.
+- Model errors lead with the cause and the next step, and no longer show a
+  partial reply as if it were the failure.
+- Saved chats show when they were last used and a one-line preview. **Reset chat**
+  asks for a second click because it clears additional sources.
+- The page chip now reads **This page · …**; history entries no longer share its
+  label. The "leaving this page stops replies" notice appears only while a reply
+  runs or a draft exists.
+- The empty page offers **解释一下** beside **Summarize**. The launcher has a
+  hover close button, and **Forget key** is no longer styled as a primary action.

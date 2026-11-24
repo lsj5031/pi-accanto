@@ -152,7 +152,7 @@ in history remain. Incomplete/failed attachments must be removed before export.
 
 In extension-tab Settings, choose the backup file, review the counts, then confirm
 **Import new archives**. Restoration is atomic and adds fresh, read-only archived
-chats to History without overwriting existing chats. Reimporting creates another
+chats to **Chats** without overwriting existing chats. Reimporting creates another
 copy. Open an archive to read history, text sources and PDF pages, view images or
 save original file bytes locally. Files can be attached manually to a new live chat.
 Tasks cannot resume. Live tabs are unavailable references that require reselection.
@@ -188,7 +188,7 @@ Accept Chrome's request to access that provider if prompted.
 
 Choose your provider's native format when available. The base URL fills in for
 OpenAI Responses, Anthropic and Gemini; custom servers need their own URL.
-**Model configured** means your settings were saved after a model-catalog check.
+**Connected to …** means your settings were saved after a model-catalog check.
 It does not test chat access. A successful reply verifies chat access in that
 panel; a gateway can allow the catalog but reject chat requests.
 
@@ -242,10 +242,10 @@ friendly eye change, then click to open. Reduced-motion preferences are respecte
 | Put it away | Click **−** or press **Escape**. A running reply continues while minimized. |
 | Move it | Drag the small grip at the top. |
 | Make room for a longer chat | Click the expand icon or press **Alt + Shift + D** to enlarge. Press again to restore the previous size and position. |
-| Start fresh or return to a chat | Open **History** in the header. **Reset chat** starts fresh in the same saved chat, without adding a history entry. Or choose another saved conversation. |
+| Start fresh or return to a chat | Open **Chats** in the header. **Reset chat** starts fresh in the same saved chat, without adding a history entry; choose it twice to confirm because it clears additional sources. Or choose another saved conversation. |
 | Change page context | Open the page-context chip and choose **Web only** or **Use this page**. Your unsent draft is kept. |
-| Keep working while you navigate | Press **Alt + Shift + S** or choose **History → Open in a tab** before starting the reply. The conversation and its page context move together. Keep that assistant tab open. |
-| Hide the companion on a website | Right-click the small companion and choose **Hide on this site**. The toolbar can bring it back. |
+| Keep working while you navigate | Press **Alt + Shift + S** or choose **Chats → Open in a tab** before starting the reply. The conversation and its page context move together. Keep that assistant tab open. |
+| Hide the companion on a website | Hover the small companion and click **×**, or right-click it and choose **Hide on this site**. The toolbar can bring it back. |
 
 These three Chrome-managed shortcuts work while browsing, including when focus is
 outside Accanto. On Mac, use **Option** for **Alt**. Chrome may keep older assignments

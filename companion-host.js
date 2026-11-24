@@ -7,7 +7,7 @@
   const extensionOrigin = new URL(chrome.runtime.getURL('/')).origin;
   const host = document.createElement('div');
   host.setAttribute('data-accanto-companion', '');
-  host.style.cssText = 'all:initial!important;position:fixed!important;inset:auto 24px 24px auto!important;z-index:2147483647!important;pointer-events:none!important;color-scheme:light!important';
+  host.style.cssText = 'all:initial!important;position:fixed!important;inset:auto 24px 24px auto!important;z-index:2147483647!important;pointer-events:none!important;color-scheme:light dark!important';
   const shadow = host.attachShadow({ mode: 'closed' });
   shadow.innerHTML = `<style>
     *{box-sizing:border-box}button{font:13px/1.4 system-ui,sans-serif;cursor:pointer;color:#3b5434}button:focus-visible{outline:2px solid #487340;outline-offset:3px}button:active:not(:focus-visible){transform:scale(.97)}[hidden]{display:none!important}
@@ -20,18 +20,37 @@
     iframe{border:0;width:100%;height:100%;display:block;background:#fcfdf8}
     .grip{pointer-events:auto;position:absolute;z-index:1;left:calc(50% - 32px);top:0;width:64px;height:13px;padding:0;border:0;background:transparent;cursor:grab;touch-action:none}.grip:after{content:'';display:block;width:26px;height:3px;margin:auto;border-radius:4px;background:#dbe3cf}.grip:active{cursor:grabbing;transform:none}
     .grip:focus-visible{outline-offset:-2px;border-radius:5px}
+    .close{pointer-events:none;position:absolute;right:-7px;top:-7px;width:22px;height:22px;display:grid;place-items:center;padding:0;border:1px solid #cddcbe;border-radius:50%;background:#fcfdf8;color:#586640;box-shadow:0 2px 6px #23321a26;opacity:0;transition:opacity 120ms ease}
+    .close svg{width:12px;height:12px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round}
+    .launcher:hover~.close,.close:hover,.close:focus-visible{opacity:1;pointer-events:auto}
+    .close[hidden]{display:none!important}
+    @media(hover:none){.close{opacity:1;pointer-events:auto}}
+    @media(prefers-color-scheme:dark){
+      .window{border-color:#3a432e;background:#191c14;box-shadow:0 16px 54px #00000066}
+      iframe{background:#191c14}
+      .menu,.fallback{border-color:#3a432e;background:#20261a;color:#d4e0ca;box-shadow:0 6px 24px #00000059}
+      .menu button{color:#d4e0ca}
+      .launcher{border-color:#3a432e;background:#2a3624;box-shadow:0 4px 14px #00000033}
+      .face{background:#7f9a63}
+      .grip:after{background:#4a5a3b}
+      .fallback button{border-color:#3a432e;background:#2a3624;color:#d4e0ca}
+      .close{border-color:#3a432e;background:#20261a;color:#d4e0ca}
+      @media(hover:hover){.launcher:hover{background:#33412b}.menu button:hover{background:#26301f}}
+    }
     .menu,.fallback{pointer-events:auto;position:absolute;right:0;bottom:62px;width:210px;padding:6px;border:1px solid #d9e2cf;border-radius:12px;background:#fcfdf8;box-shadow:0 6px 24px #23321a20;font:13px/1.5 system-ui,sans-serif;color:#465a3c}.menu button{display:block;width:100%;padding:9px;border:0;border-radius:6px;text-align:left;background:transparent}.fallback{bottom:0;width:100%;height:100%;padding:64px 24px 24px}.fallback button{padding:9px 12px;border:1px solid #cddcbe;border-radius:8px;background:#e8efdc}.fallback p{margin:0 0 18px}
     @media(hover:hover) and (pointer:fine){.launcher:hover{background:#dfe9d1;transform:translateY(-2px)}.launcher:hover .face:before,.launcher:hover .face:after{height:5px;transform:translateY(-1px)}.menu button:hover{background:#edf2e5}}
     @media(max-width:480px){.window{width:calc(100vw - 24px)}}
-    @media(prefers-reduced-motion:reduce){.launcher{transition:none}.launcher:hover,button:active{transform:none}}
+    @media(prefers-reduced-motion:reduce){.launcher,.close{transition:none}.launcher:hover,button:active{transform:none}}
   </style>
   <button class="launcher" aria-label="Open Accanto" aria-expanded="false" title="Accanto · Right-click for options"><span class="face" aria-hidden="true"></span></button>
+  <button class="close" data-action="hide" aria-label="Hide Accanto on this site" title="Hide on this site"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="m6 6 8 8M14 6l-8 8"/></svg></button>
   <div class="menu" hidden><button data-action="tab">Open in a tab</button><button data-action="hide">Hide on this site</button></div>
   <section class="window" data-closed="true" aria-label="Accanto companion" inert hidden>
     <button class="grip" aria-label="Move Accanto. Drag or use arrow keys." title="Drag to move"></button>
     <div class="fallback" hidden><p>This page could not open the companion. Continue in an Accanto tab.</p><button data-action="tab">Open in a tab</button></div>
   </section>`;
   const launcher = shadow.querySelector('.launcher');
+  const closeButton = shadow.querySelector('.close');
   const card = shadow.querySelector('.window');
   const grip = shadow.querySelector('.grip');
   const menu = shadow.querySelector('.menu');
@@ -67,6 +86,7 @@
     card.dataset.closed = 'true';
     card.inert = true;
     launcher.hidden = false;
+    closeButton.hidden = false;
     launcher.setAttribute('aria-expanded', 'false');
     launcher.focus({ preventScroll: true });
     clamp();
@@ -113,6 +133,7 @@
     card.inert = false;
     card.dataset.closed = 'false';
     launcher.hidden = true;
+    closeButton.hidden = true;
     launcher.setAttribute('aria-expanded', 'true');
     clamp();
     if (!frame) {
@@ -143,7 +164,7 @@
   });
   shadow.addEventListener('click', async event => {
     if (!event.isTrusted) return;
-    const action = event.target.dataset.action;
+    const action = event.target.closest?.('[data-action]')?.dataset.action;
     if (action === 'tab') await openTab();
     if (action === 'hide') {
       const { companionHiddenSites = [] } = await chrome.storage.local.get('companionHiddenSites');

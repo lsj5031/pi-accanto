@@ -239,12 +239,12 @@ try {
     await panel.screenshot({ path: resolve(artifacts, 'attachment-live-followup.png') });
     await panel.reload();
     await panel.waitForFunction(() => document.getElementById('status')?.textContent.includes('Ready'));
-    assert.equal(await panel.locator('#target').textContent(), 'Pi Tab verification');
+    assert.equal(await panel.locator('#target').textContent(), 'This page · Pi Tab verification');
     // This source tab has never received activeTab. Grant its site from Accanto.
     await panel.locator('#use-current-tab').evaluate((button) => button.click());
     await panel.waitForFunction(() => !document.getElementById('use-current-tab').disabled);
     assert.match(await panel.locator('#status').textContent(), /toolbar action/);
-    assert.equal(await panel.locator('#target').textContent(), 'Pi Tab verification');
+    assert.equal(await panel.locator('#target').textContent(), 'This page · Pi Tab verification');
     // Approve the real broad host prompt, verify another tab can be read, then
     // revoke it and prove site-by-site approval is required again.
     await panel.locator('#connection').evaluate(element => { element.open = true; });
@@ -288,7 +288,7 @@ try {
     assert.ok(requests.slice(changedStart).every((request) => !request.oldTaskPresent), 'Prior task must not enter model context');
     assert.match(await panel.locator('#transcript').textContent(), /NZ-429/);
     await panel.screenshot({ path: resolve(artifacts, 'attachment-live-changed.png') });
-    await panel.locator('#new-conversation').evaluate((button) => button.click());
+    await panel.locator('#new-conversation').evaluate((button) => { button.click(); button.click(); });
     await panel.waitForFunction(() => document.getElementById('status').textContent.includes('Chat reset'));
     assert.equal(await panel.locator('article').count(), 0);
     await panel.screenshot({ path: resolve(artifacts, 'attachment-live-new.png') });
@@ -328,7 +328,7 @@ try {
     await panel.waitForFunction(() => !document.getElementById('use-current-tab').disabled);
     assert.equal(await panel.locator('#target').getAttribute('title'), pdfUrl);
     await panel.waitForFunction(async () => (await chrome.tabs.query({ active: true, currentWindow: true }))[0]?.status === 'complete');
-    await panel.locator('#new-conversation').evaluate(button => button.click());
+    await panel.locator('#new-conversation').evaluate(button => { button.click(); button.click(); });
     await panel.waitForFunction(() => !document.getElementById('new-conversation').disabled);
     assert.match(await panel.locator('#status').textContent(), /Chat reset/);
     const pdfRead = await send('Read this PDF using inspect_tab. Give the Harbour project code, total cost of both depots plus delivery, reference code and approval status. Cite physical PDF page numbers for the facts.');
@@ -363,7 +363,7 @@ try {
     await panel.locator('#use-current-tab').evaluate(button => button.click());
     await panel.waitForFunction(() => !document.getElementById('use-current-tab').disabled);
     await panel.waitForFunction(async () => (await chrome.tabs.query({ active: true, currentWindow: true }))[0]?.status === 'complete');
-    await panel.locator('#new-conversation').evaluate(button => button.click());
+    await panel.locator('#new-conversation').evaluate(button => { button.click(); button.click(); });
     await panel.waitForFunction(() => !document.getElementById('new-conversation').disabled);
     const localRead = await send('Read this local PDF. Give the project code and the reference code with page numbers.');
     assert.match(localRead.answer, /H-731/);
@@ -376,7 +376,7 @@ try {
     await panel.waitForFunction(() => !document.getElementById('use-current-tab').disabled);
     assert.match(await panel.locator('#target').getAttribute('title'), /scan-Pi%20Tab%20verification\.pdf$/);
     await panel.waitForFunction(async () => (await chrome.tabs.query({ active: true, currentWindow: true }))[0]?.status === 'complete');
-    await panel.locator('#new-conversation').evaluate(button => button.click());
+    await panel.locator('#new-conversation').evaluate(button => { button.click(); button.click(); });
     await panel.waitForFunction(() => !document.getElementById('new-conversation').disabled);
     const scanRead = await send('Read this PDF and summarize its contents in at most two sentences.');
     assert.match(await panel.locator('article.toolResult').last().textContent(), /No extractable text/);
