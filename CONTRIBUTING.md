@@ -47,7 +47,7 @@ release workflow publishes a directly installable ZIP and SHA256SUMS only after
 all required gates. There is no Chrome Web Store integration.
 
 For a release, follow [distribution verification and operator steps](docs/verification/distribution.md).
-`npm run release:prepare -- v0.3.0` validates versions and the actual packaged
+`npm run release:prepare -- v0.4.0` validates versions and the actual packaged
 ZIP offline and writes checksums/release notes. Add `--verify` to check those
 files without writing. Release tooling requires Linux/macOS `zip` and `unzip`;
 the automated publisher runs on Linux. Never change the stable manifest key.

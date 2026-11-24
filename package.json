@@ -1,6 +1,6 @@
 {
   "name": "pi-accanto",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "An extension-only browser assistant with page evidence, web research and sandboxed Code Mode.",
   "license": "MIT",
   "engines": {
