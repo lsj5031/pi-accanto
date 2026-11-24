@@ -226,7 +226,7 @@ try {
   await send('After reload, inspect the attached tab');
   assert.match(await panel.locator('article.toolResult').last().textContent(), /NZ-427/);
   await panel.locator('#use-current-tab').evaluate((button) => button.click());
-  await panel.waitForFunction(() => document.getElementById('target').textContent === 'Other task');
+  await panel.waitForFunction(() => document.getElementById('target').textContent === 'This page · Other task');
   assert.match(await panel.locator('#transcript').textContent(), /NZ-427/);
   assert.match(await panel.locator('.task-boundary').last().textContent(), /Other task/);
   await send('Inspect the explicitly attached other tab');
@@ -269,7 +269,7 @@ try {
   assert.equal(await panel.locator('article').count(), 0, 'A detached new chat survives reload without restoring the old task');
   await internal.close();
   await fixture.bringToFront();
-  await panel.waitForFunction(() => document.getElementById('target').textContent === 'Disposable draft');
+  await panel.waitForFunction(() => document.getElementById('target').textContent === 'This page · Disposable draft');
   await panel.screenshot({ path: resolve(artifacts, 'attachment-new.png') });
   await send('Fresh task after New conversation');
   assert.match(await panel.locator('#transcript').textContent(), /NZ-427/);
@@ -293,7 +293,7 @@ try {
   // Configure a non-default base path/model through the public settings UI.
   const modelEndpoint = `http://127.0.0.1:${server.address().port}/custom/v1`;
   await reopened.locator('#connection > summary').click();
-  await reopened.locator('.advanced > summary').click();
+  await reopened.locator('#settings .advanced > summary').click();
   await reopened.locator('#mode').selectOption('live');
   await reopened.locator('#model-endpoint').fill(`${modelEndpoint}///`);
   await reopened.locator('#model-id').fill('missing-model');

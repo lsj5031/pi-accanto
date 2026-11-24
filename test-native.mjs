@@ -401,7 +401,7 @@ try {
   // Check native browser tools independently if inference is blocked.
   await fixture.locator('p').evaluate((paragraph) => { paragraph.textContent = 'Invoice NZ-427 has 3 items at $27.50 each and delivery of $8.25.'; });
   await panel.locator('#connection').evaluate((details) => { details.open = true; });
-  await panel.locator('.advanced > summary').click();
+  await panel.locator('#settings .advanced > summary').click();
   await panel.locator('#mode').selectOption('scripted');
   await Promise.all([panel.waitForEvent('load'), panel.locator('#connect').evaluate((button) => button.click())]);
   await panel.waitForFunction(() => document.getElementById('status')?.textContent.includes('Ready'));
