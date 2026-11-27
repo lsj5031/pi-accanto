@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.4.2
+
+- **解读一下** replaces **解释一下** on the empty chat and sends its prompt on
+  the first click, without a second click on Send.
+
 ## 0.4.1
 
 - Open the companion’s **…** menu to switch chats, open the current chat in a tab, or go to Settings.
