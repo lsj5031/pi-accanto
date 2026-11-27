@@ -980,6 +980,7 @@ async function start() {
     $('prompt').value = suggestion.dataset.prompt;
     void saveDraft().catch(reportDraftError);
     $('prompt').focus();
+    if (suggestion.hasAttribute('data-send') && !$('send').disabled) $('composer').requestSubmit();
   });
   $('prompt').addEventListener('keydown', (event) => {
     if (event.key === 'Enter' && (event.ctrlKey || event.metaKey) && !event.isComposing) {

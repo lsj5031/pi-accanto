@@ -127,16 +127,14 @@ try {
   await panel.emulateMedia({ colorScheme: 'light', reducedMotion: 'reduce' });
   assert.equal(await panel.locator('#prompt').evaluate(element => getComputedStyle(element).fontSize), '16px', 'Chrome extension defaults must not shrink composer text');
   assert.equal(await panel.locator('#tab-switch').isVisible(), false, 'Starting a chat needs no tab-switch decision');
-  await panel.getByRole('button', { name: '解释一下', exact: true }).click();
-  assert.equal(await panel.locator('#prompt').inputValue(), '用中文解释这个页面。');
   await panel.getByRole('button', { name: 'Summarize', exact: true }).evaluate((button) => button.click());
   assert.equal(await panel.locator('#prompt').inputValue(), 'Summarize this page in a few sentences.');
   await panel.screenshot({ path: resolve(artifacts, 'ready.png') });
-  const clearedOnSubmit = await panel.locator('#prompt').evaluate((input) => {
-    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', ctrlKey: true, bubbles: true, cancelable: true }));
-    return input.value;
-  });
-  assert.equal(clearedOnSubmit, '', 'The submitted draft must clear before any asynchronous page or model work');
+  // The Chinese chip sends its literal prompt on the first click.
+  await panel.getByRole('button', { name: '解读一下', exact: true }).click();
+  assert.equal(await panel.locator('#prompt').inputValue(), '', 'The chip must submit before any asynchronous page or model work');
+  await panel.locator('article.user pre').last().waitFor();
+  assert.equal(await panel.locator('article.user pre').last().innerText(), '解读一下');
   await panel.waitForFunction(() => document.getElementById('status')?.textContent.includes('Check complete'));
   assert.equal(await panel.locator('#prompt').inputValue(), '');
   assert.equal(await panel.locator('article.assistant .message-body strong').last().innerText(), 'Scripted compatibility check finished.');
