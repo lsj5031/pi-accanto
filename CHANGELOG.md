@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.4.3
+
+- Model, PDF and web-source requests from the embedded companion no longer
+  inherit a site's `upgrade-insecure-requests` policy, so plain-HTTP LAN servers
+  work on sites such as GitHub.
+- Connect detects an `https://` LAN endpoint that only answers plain HTTP and
+  offers a one-click switch to the matching `http://` URL.
+- The keyboard shortcuts dialog no longer triggers Chrome's cross-origin
+  autofocus warning.
+
 ## 0.4.2
 
 - **解读一下** replaces **解释一下** on the empty chat and sends its prompt on
