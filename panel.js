@@ -75,6 +75,19 @@ const modelApis = {
 
 const toolLabels = { inspect_tab: 'Read this page', type_in_focused_field: 'Edit focused field', search_page: 'Search this page', read_page_section: 'Read page section', web_search: 'Search the web', read_web_source: 'Read web source', list_sources: 'List attached sources', read_source: 'Read attached source', codemode: 'Code Mode' };
 
+// A plain-HTTP server on a LAN address is easy to mistake for an HTTPS one.
+// Only private, loopback and local names are probed, never public hosts.
+function isLanHost(hostname) {
+  const host = hostname.toLowerCase();
+  if (['localhost', '::1', '[::1]'].includes(host) || host.endsWith('.localhost') || host.endsWith('.local')) return true;
+  if (/^\[?f[cd][0-9a-f]{2}:/.test(host) || /^\[?fe80:/.test(host)) return true;
+  if (!host.includes('.') && !host.startsWith('[')) return true;
+  const octets = host.split('.');
+  if (octets.length !== 4 || !octets.every((part) => /^\d{1,3}$/.test(part) && Number(part) <= 255)) return false;
+  const [a, b] = octets.map(Number);
+  return a === 10 || a === 127 || (a === 192 && b === 168) || (a === 169 && b === 254) || (a === 172 && b >= 16 && b <= 31);
+}
+
 function relativeTime(value) {
   const time = Number(value);
   if (!Number.isFinite(time) || time <= 0) return '';
@@ -908,6 +921,7 @@ async function start() {
     showModelSettings();
   });
   $('settings').addEventListener('input', event => {
+    $('switch-http').hidden = true;
     if (event.target.matches('#model-endpoint, #model-id')) $('custom-image-input').checked = false;
     if (event.target.matches('#model-endpoint, #model-id, #api-key, #remember-model-key, #custom-image-input, #mode')) connectionStatus('draft', 'Changes not applied. Connect to check and save. Your active connection is unchanged.');
   });
@@ -992,8 +1006,26 @@ async function start() {
       if (!$('send').disabled) $('composer').requestSubmit();
     }
   });
+  $('switch-http').addEventListener('click', () => {
+    const candidate = $('switch-http').dataset.endpoint;
+    if (!candidate) return;
+    $('model-endpoint').value = candidate;
+    $('switch-http').hidden = true;
+    $('settings').requestSubmit();
+  });
+  const httpAlternative = async (url, path, headers) => {
+    if (url.protocol !== 'https:' || !isLanHost(url.hostname)) return undefined;
+    const candidate = new URL(url.href);
+    candidate.protocol = 'http:';
+    const endpoint = candidate.href.replace(/\/+$/, '');
+    try {
+      const response = await fetch(`${endpoint}${path}`, { headers, credentials: 'omit', redirect: 'error', signal: AbortSignal.timeout(5000) });
+      return response.ok ? endpoint : undefined;
+    } catch { return undefined; }
+  };
   $('settings').addEventListener('submit', async (event) => {
     event.preventDefault();
+    $('switch-http').hidden = true;
     $('connect').disabled = true;
     changingModel = true;
     try {
@@ -1008,7 +1040,16 @@ async function start() {
         if (!nextModel) throw new Error('Enter a model ID.');
         const key = $('api-key').value.trim() || (nextEndpoint === endpoint && nextApi === modelApi ? apiKey : '');
         if (!key) throw new Error('Enter this endpoint’s API key. Saved keys are not reused for a different endpoint or API format.');
-        if (!await chrome.permissions.request({ origins: [`${url.origin}/*`] })) throw new Error('Model server access was declined.');
+        // A failed HTTPS LAN connection is probed over HTTP, which needs its
+        // own host grant. Ask for both up front so the probe can run without a
+        // second gesture and the switch can connect immediately.
+        const origins = [`${url.origin}/*`];
+        if (url.protocol === 'https:' && isLanHost(url.hostname)) {
+          const fallback = new URL(url.href);
+          fallback.protocol = 'http:';
+          origins.push(`${fallback.origin}/*`);
+        }
+        if (!await chrome.permissions.request({ origins })) throw new Error('Model server access was declined.');
         connectionStatus('checking', 'Checking model endpoint…');
         let path = '/models';
         let headers = { Authorization: `Bearer ${key}` };
@@ -1019,7 +1060,19 @@ async function start() {
           path = `/models/${encodeURIComponent(nextModel)}`;
           headers = { 'x-goog-api-key': key };
         }
-        const response = await fetch(`${nextEndpoint}${path}`, { headers, credentials: 'omit', redirect: 'error', signal: AbortSignal.timeout(15000) });
+        let response;
+        try {
+          response = await fetch(`${nextEndpoint}${path}`, { headers, credentials: 'omit', redirect: 'error', signal: AbortSignal.timeout(15000) });
+        } catch (error) {
+          const fallback = await httpAlternative(url, path, headers);
+          if (fallback) {
+            $('switch-http').textContent = `Use ${fallback}`;
+            $('switch-http').dataset.endpoint = fallback;
+            $('switch-http').hidden = false;
+            throw new Error(`This LAN server answers over plain HTTP. Use the button to switch to ${fallback}.`);
+          }
+          throw error;
+        }
         if (!response.ok) throw new Error(`Model endpoint returned HTTP ${response.status}.`);
         const catalog = await response.json();
         if (nextApi === 'google-generative-ai' ? catalog.name !== `models/${nextModel}` : nextApi === 'anthropic-messages' ? !catalog.id : !catalog.data?.some((model) => model.id === nextModel)) throw new Error(`The endpoint does not list model ${nextModel}.`);

@@ -13,7 +13,7 @@ const extension = resolve(profile, 'extension');
 await cp('dist', extension, { recursive: true });
 const manifest = JSON.parse(await readFile(resolve(extension, 'manifest.json'), 'utf8'));
 // Automation cannot invoke activeTab's toolbar gesture. Grant only the disposable fixture origin in this test copy.
-manifest.host_permissions = ['http://127.0.0.1/*'];
+manifest.host_permissions = ['http://127.0.0.1/*', 'https://127.0.0.1/*'];
 await writeFile(resolve(extension, 'manifest.json'), JSON.stringify(manifest));
 const modelRequests = [];
 const nativeRequests = [];
@@ -293,13 +293,18 @@ try {
   await reopened.locator('#connection > summary').click();
   await reopened.locator('#settings .advanced > summary').click();
   await reopened.locator('#mode').selectOption('live');
-  await reopened.locator('#model-endpoint').fill(`${modelEndpoint}///`);
+  await reopened.locator('#model-endpoint').fill(`${modelEndpoint.replace('http://', 'https://')}///`);
   await reopened.locator('#model-id').fill('missing-model');
   await reopened.locator('#api-key').fill('fixture-key-719');
   assert.equal(await reopened.locator('#remember-model-key').isChecked(), true, 'New connections remember keys by default');
   await reopened.locator('#remember-model-key').uncheck();
   await reopened.locator('#connect').click();
+  await reopened.waitForFunction(() => !document.getElementById('switch-http').hidden);
+  assert.equal(await reopened.locator('#switch-http').textContent(), `Use ${modelEndpoint}`, 'An HTTPS LAN endpoint speaking HTTP must offer its HTTP URL');
+  assert.match(await reopened.locator('#connection-status').textContent(), /plain HTTP/);
+  await reopened.locator('#switch-http').click();
   await reopened.waitForFunction(() => document.getElementById('connection-status').textContent.includes('does not list model missing-model'));
+  assert.equal(await reopened.locator('#model-endpoint').inputValue(), modelEndpoint);
   assert.equal(await reopened.evaluate(async () => (await chrome.storage.local.get('modelConnection')).modelConnection), undefined);
   await reopened.locator('#model-id').fill('fixture-model-719');
   assert.equal(await reopened.locator('#custom-image-input').isChecked(), false, 'Unknown models default to text-only');
