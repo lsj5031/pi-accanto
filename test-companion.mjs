@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { createServer } from 'node:http';
 import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -26,6 +27,9 @@ delete manifest.commands['enlarge-chat'].suggested_key;
 await writeFile(resolve(extension, 'manifest.json'), JSON.stringify(manifest));
 const invoice = await readFile('docs/examples/code-mode-invoice.html', 'utf8');
 const calculation = String.raw`const page = JSON.parse(await tools.inspect_tab({})); const m = page.text.match(/(\d+) at (\d+\.\d{2}); delivery (\d+\.\d{2})/); text(Number(m[1]) * Number(m[2]) + Number(m[3]));`;
+const binaryPayload = Buffer.alloc(512013);
+for (let index = 0; index < binaryPayload.length; index += 1) binaryPayload[index] = (index * 37 + 11) & 255;
+const binaryHash = createHash('sha256').update(binaryPayload).digest('hex');
 let modelOffline = false;
 let dropModelStream;
 const modelRequests = [];
@@ -53,8 +57,19 @@ const server = createServer((request, response) => {
     });
     return;
   }
+  if (request.url === '/binary') {
+    response.setHeader('Content-Type', 'application/octet-stream');
+    response.setHeader('Content-Length', binaryPayload.length);
+    response.setHeader('X-Session-Seen', request.headers.cookie?.includes('accanto-session=fixture') ? 'yes' : 'no');
+    response.end(binaryPayload);
+    return;
+  }
   if (request.url === '/plain') { response.setHeader('Content-Type', 'text/plain'); response.end('Plain document fixture'); return; }
   if (request.url === '/blocked') response.setHeader('Content-Security-Policy', "frame-src 'none'");
+  // Production sites commonly send upgrade-insecure-requests. It must not
+  // rewrite the companion's plain-HTTP network requests to HTTPS.
+  if (!response.hasHeader('Content-Security-Policy')) response.setHeader('Content-Security-Policy', 'upgrade-insecure-requests');
+  response.setHeader('Set-Cookie', 'accanto-session=fixture; Path=/');
   response.setHeader('Content-Type', 'text/html; charset=utf-8');
   response.end(invoice);
 });
@@ -380,6 +395,20 @@ try {
   assert.match(await a.locator('article.toolResult').last().textContent(), /90\.75/);
   assert.match(await a.locator('article.assistant .message-body').last().textContent(), /90\.75/);
   assert.equal(await a.locator('#connection-status').getAttribute('data-state'), 'verified', 'Only a successful model reply verifies chat access');
+  // PDFs and web sources use the same worker transport. Verify binary bytes and
+  // credentialed reads from a CSP page that would otherwise upgrade HTTP.
+  const transport = await a.evaluate(async (url) => {
+    const response = await fetch(url, { credentials: 'include' });
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    const digest = await crypto.subtle.digest('SHA-256', bytes);
+    return {
+      status: response.status,
+      length: bytes.length,
+      hash: [...new Uint8Array(digest)].map(byte => byte.toString(16).padStart(2, '0')).join(''),
+      cookie: response.headers.get('x-session-seen'),
+    };
+  }, `${origin}/binary`);
+  assert.deepEqual(transport, { status: 200, length: binaryPayload.length, hash: binaryHash, cookie: 'yes' });
   assert.equal(await a.locator('.turn-activity').count(), 1);
   assert.equal(await a.locator('.turn-activity').evaluate(element => element.open), false);
   await page.screenshot({ path: resolve(artifacts, 'answer.png') });

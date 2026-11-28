@@ -1,5 +1,59 @@
 import { listArchives } from './archives.js';
 
+// Embedded-page requests run here, not in the companion iframe: a host page's
+// `upgrade-insecure-requests` CSP is applied to embedded extension frames and
+// would silently turn a plain-HTTP endpoint or source into a failing HTTPS
+// request.
+chrome.runtime.onConnect.addListener((port) => {
+  if (port.name !== 'accanto-fetch' || port.sender?.id !== chrome.runtime.id) return;
+  const abort = new AbortController();
+  let accepted = false;
+  port.onDisconnect.addListener(() => abort.abort());
+  port.onMessage.addListener(async (request) => {
+    if (accepted) return;
+    accepted = true;
+    try {
+      const response = await fetch(request.url, {
+        method: request.method,
+        headers: request.headers,
+        body: request.body,
+        redirect: request.redirect,
+        credentials: request.credentials,
+        referrerPolicy: request.referrerPolicy,
+        signal: abort.signal,
+      });
+      const headers = [...response.headers]
+        .filter(([name]) => !['content-encoding', 'transfer-encoding'].includes(name));
+      port.postMessage({ type: 'headers', status: response.status, statusText: response.statusText, headers });
+      if (!response.body) {
+        port.postMessage({ type: 'end' });
+        return;
+      }
+      // Runtime ports only carry JSON-serializable values, so stream bytes as
+      // base64 rather than typed arrays.
+      const encode = (bytes) => {
+        let binary = '';
+        for (let index = 0; index < bytes.length; index += 0x8000) {
+          binary += String.fromCharCode(...bytes.subarray(index, index + 0x8000));
+        }
+        return btoa(binary);
+      };
+      const reader = response.body.getReader();
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        port.postMessage({ type: 'chunk', data: encode(value) });
+      }
+      // The panel closes the port after it receives this. Disconnecting here
+      // can discard queued chunks and make a complete response look aborted.
+      port.postMessage({ type: 'end' });
+    } catch (error) {
+      // The panel closes the port after it handles the failure.
+      if (!abort.signal.aborted) port.postMessage({ type: 'error', message: error.message });
+    }
+  });
+});
+
 chrome.action.onClicked.addListener(openAccanto);
 chrome.commands.onCommand.addListener((command, tab) => { void handleCommand(command, tab); });
 

@@ -22,6 +22,7 @@ import { openAttachments } from './attachments.js';
 import { attachmentUI } from './attachments-ui.js';
 import { backupUI, renderArchive, snapshotChat } from './backup-ui.js';
 import { getArchive, listArchives } from './archives.js';
+import { installWorkerFetch } from './worker-fetch.js';
 
 const context = BACKGROUND_CONTEXT;
 const $ = (id) => document.getElementById(id);
@@ -765,6 +766,9 @@ async function start() {
   }
   const { mode = 'live', modelConnection } = await chrome.storage.local.get(['mode', 'modelConnection']);
   const endpoint = modelConnection?.endpoint || '';
+  // Only an embedded companion inherits the host page's CSP; a top-level panel
+  // keeps its direct requests.
+  if (embedded) installWorkerFetch();
   const modelId = modelConnection?.modelId || '';
   const modelApi = modelConnection?.api || 'openai-completions';
   const modelConfig = modelApis[modelApi];
